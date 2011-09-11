@@ -265,7 +265,7 @@ public class JsonReader {
 	}
 
 	protected void string (String name, String value) {
-		set(name, new JsonValue(value));
+		set(name, value == null ? null : new JsonValue(value));
 	}
 
 	protected void number (String name, float value) {
