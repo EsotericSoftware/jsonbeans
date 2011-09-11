@@ -766,12 +766,12 @@ public class Json {
 	static public interface Serializer<T> {
 		public void write (Json json, T object, Class knownType) throws IOException;
 
-		public T read (Json json, Object jsonData, Class type);
+		public T read (Json json, JsonObject jsonData, Class type);
 	}
 
 	static public interface Serializable {
 		public void write (Json json) throws IOException;
 
-		public void read (Json json, Object jsonData);
+		public void read (Json json, JsonObject jsonData);
 	}
 }
