@@ -89,7 +89,7 @@ public class JsonValue implements JsonObject {
 	}
 
 	public int toInt () {
-		return Integer.parseInt(value);
+		return (int)Float.parseFloat(value);
 	}
 
 	public double toDouble () {

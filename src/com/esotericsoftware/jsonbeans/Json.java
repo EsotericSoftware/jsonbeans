@@ -71,10 +71,13 @@ public class Json {
 	}
 
 	public void setOutputType (OutputType outputType) {
+		if (outputType == null) throw new IllegalArgumentException("outputType cannot be null.");
 		this.outputType = outputType;
 	}
 
 	public void addClassTag (String tag, Class type) {
+		if (tag == null) throw new IllegalArgumentException("tag cannot be null.");
+		if (type == null) throw new IllegalArgumentException("type cannot be null.");
 		tagToClass.put(tag, type);
 		classToTag.put(type, tag);
 	}
@@ -86,6 +89,8 @@ public class Json {
 	}
 
 	public <T> void setSerializer (Class<T> type, Serializer<T> serializer) {
+		if (type == null) throw new IllegalArgumentException("type cannot be null.");
+		if (serializer == null) throw new IllegalArgumentException("serializer cannot be null.");
 		classToSerializer.put(type, serializer);
 	}
 
@@ -94,6 +99,9 @@ public class Json {
 	}
 
 	public void setElementType (Class type, String fieldName, Class elementType) {
+		if (type == null) throw new IllegalArgumentException("type cannot be null.");
+		if (fieldName == null) throw new IllegalArgumentException("fieldName cannot be null.");
+		if (elementType == null) throw new IllegalArgumentException("elementType cannot be null.");
 		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
@@ -722,6 +730,8 @@ public class Json {
 				if (newLines) indent(indent - 1, buffer);
 				buffer.append(']');
 			}
+		} else if (object == null) {
+			buffer.append("null");
 		} else if (object instanceof JsonValue) {
 			JsonValue value = (JsonValue)object;
 			switch (value.getType()) {
@@ -736,8 +746,6 @@ public class Json {
 			case bool:
 				buffer.append(value.toBoolean());
 				break;
-			default:
-				buffer.append("null");
 			}
 		} else
 			throw new SerializationException("Unknown object type: " + object.getClass());
