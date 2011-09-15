@@ -105,6 +105,7 @@ public class Json {
 		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
+		if (metadata == null) throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		metadata.elementType = elementType;
 	}
 
@@ -479,8 +480,8 @@ public class Json {
 		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
+		if (metadata == null) throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		Field field = metadata.field;
-		if (field == null) throw new SerializationException("Unable to find field: " + fieldName + " (" + type.getName() + ")");
 		JsonObject jsonValue = jsonMap.get(jsonName);
 		if (jsonValue == null) return;
 		if (elementType == null) elementType = metadata.elementType;
@@ -509,7 +510,7 @@ public class Json {
 			if (ignoreUnknownFields) {
 				if (debug) System.out.println("Ignoring unknown field: " + entry.getKey() + " (" + type.getName() + ")");
 			} else if (field == null)
-				throw new SerializationException("Unable to find field: " + entry.getKey() + " (" + type.getName() + ")");
+				throw new SerializationException("Field not found: " + entry.getKey() + " (" + type.getName() + ")");
 			if (entry.getValue() == null) continue;
 			try {
 				field.set(object, readValue(field.getType(), metadata.elementType, entry.getValue()));
