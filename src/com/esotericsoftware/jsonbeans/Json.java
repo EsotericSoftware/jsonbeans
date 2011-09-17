@@ -56,7 +56,7 @@ public class Json {
 	private static final boolean debug = false;
 
 	private JsonWriter writer;
-	private String typeName = "type";
+	private String typeName = "class";
 	private boolean usePrototypes = true;
 	private OutputType outputType = OutputType.minimal;
 	private final HashMap<Class, HashMap<String, FieldMetadata>> typeToFields = new HashMap();
