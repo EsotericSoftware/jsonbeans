@@ -1,34 +1,6 @@
-/*******************************************************************************
- * Copyright (c) 2011, Nathan Sweet <nathan.sweet@gmail.com>
- * All rights reserved.
- * 
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *     * Redistributions of source code must retain the above copyright
- *       notice, this list of conditions and the following disclaimer.
- *     * Redistributions in binary form must reproduce the above copyright
- *       notice, this list of conditions and the following disclaimer in the
- *       documentation and/or other materials provided with the distribution.
- *     * Neither the name of the <organization> nor the
- *       names of its contributors may be used to endorse or promote products
- *       derived from this software without specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
- * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
- * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
- * DISCLAIMED. IN NO EVENT SHALL <COPYRIGHT HOLDER> BE LIABLE FOR ANY
- * DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
- * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
- * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
- * ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
- * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
- * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
- ******************************************************************************/
 
 package com.esotericsoftware.jsonbeans;
 
-import java.io.File;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -43,12 +15,9 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Map.Entry;
 
-import com.esotericsoftware.jsonbeans.dom.JsonArray;
-import com.esotericsoftware.jsonbeans.dom.JsonMap;
-import com.esotericsoftware.jsonbeans.dom.JsonObject;
-import com.esotericsoftware.jsonbeans.dom.JsonValue;
+import com.esotericsoftware.jsonbeans.JsonWriter.OutputType;
+import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
 
 /** Reads/writes Java objects to/from JSON, automatically.
  * @author Nathan Sweet */
@@ -58,28 +27,49 @@ public class Json {
 	private JsonWriter writer;
 	private String typeName = "class";
 	private boolean usePrototypes = true;
-	private OutputType outputType = OutputType.json;
-	private final HashMap<Class, HashMap<String, FieldMetadata>> typeToFields = new HashMap();
-	private final HashMap<String, Class> tagToClass = new HashMap();
-	private final HashMap<Class, String> classToTag = new HashMap();
-	private final HashMap<Class, Serializer> classToSerializer = new HashMap();
-	private final HashMap<Class, Object[]> classToDefaultValues = new HashMap();
+	private OutputType outputType;
+	private final ObjectMap<Class, ObjectMap<String, FieldMetadata>> typeToFields = new ObjectMap();
+	private final ObjectMap<String, Class> tagToClass = new ObjectMap();
+	private final ObjectMap<Class, String> classToTag = new ObjectMap();
+	private final ObjectMap<Class, JsonSerializer> classToSerializer = new ObjectMap();
+	private final ObjectMap<Class, Object[]> classToDefaultValues = new ObjectMap();
 	private boolean ignoreUnknownFields;
+
+	public Json () {
+		outputType = OutputType.minimal;
+	}
+
+	public Json (OutputType outputType) {
+		this.outputType = outputType;
+	}
 
 	public void setIgnoreUnknownFields (boolean ignoreUnknownFields) {
 		this.ignoreUnknownFields = ignoreUnknownFields;
 	}
 
 	public void setOutputType (OutputType outputType) {
-		if (outputType == null) throw new IllegalArgumentException("outputType cannot be null.");
 		this.outputType = outputType;
 	}
 
 	public void addClassTag (String tag, Class type) {
-		if (tag == null) throw new IllegalArgumentException("tag cannot be null.");
-		if (type == null) throw new IllegalArgumentException("type cannot be null.");
 		tagToClass.put(tag, type);
 		classToTag.put(type, tag);
+	}
+
+	public Class getClass (String tag) {
+		Class type = tagToClass.get(tag);
+		if (type != null) return type;
+		try {
+			return Class.forName(tag);
+		} catch (ClassNotFoundException ex) {
+			throw new JsonException(ex);
+		}
+	}
+
+	public String getTag (Class type) {
+		String tag = classToTag.get(type);
+		if (tag != null) return tag;
+		return type.getName();
 	}
 
 	/** Sets the name of the JSON field to store the Java class name or class tag when required to avoid ambiguity during
@@ -88,10 +78,12 @@ public class Json {
 		this.typeName = typeName;
 	}
 
-	public <T> void setSerializer (Class<T> type, Serializer<T> serializer) {
-		if (type == null) throw new IllegalArgumentException("type cannot be null.");
-		if (serializer == null) throw new IllegalArgumentException("serializer cannot be null.");
+	public <T> void setSerializer (Class<T> type, JsonSerializer<T> serializer) {
 		classToSerializer.put(type, serializer);
+	}
+
+	public <T> JsonSerializer<T> getSerializer (Class<T> type) {
+		return classToSerializer.get(type);
 	}
 
 	public void setUsePrototypes (boolean usePrototypes) {
@@ -99,17 +91,14 @@ public class Json {
 	}
 
 	public void setElementType (Class type, String fieldName, Class elementType) {
-		if (type == null) throw new IllegalArgumentException("type cannot be null.");
-		if (fieldName == null) throw new IllegalArgumentException("fieldName cannot be null.");
-		if (elementType == null) throw new IllegalArgumentException("elementType cannot be null.");
-		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
+		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
-		if (metadata == null) throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
+		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		metadata.elementType = elementType;
 	}
 
-	private HashMap<String, FieldMetadata> cacheFields (Class type) {
+	private ObjectMap<String, FieldMetadata> cacheFields (Class type) {
 		ArrayList<Field> allFields = new ArrayList();
 		Class nextClass = type;
 		while (nextClass != Object.class) {
@@ -117,7 +106,7 @@ public class Json {
 			nextClass = nextClass.getSuperclass();
 		}
 
-		HashMap<String, FieldMetadata> nameToField = new HashMap();
+		ObjectMap<String, FieldMetadata> nameToField = new ObjectMap();
 		for (int i = 0, n = allFields.size(); i < n; i++) {
 			Field field = allFields.get(i);
 
@@ -154,29 +143,6 @@ public class Json {
 		return buffer.toString();
 	}
 
-	public void toJson (Object object, File file) {
-		toJson(object, object == null ? null : object.getClass(), null, file);
-	}
-
-	public void toJson (Object object, Class knownType, File file) {
-		toJson(object, knownType, null, file);
-	}
-
-	public void toJson (Object object, Class knownType, Class elementType, File file) {
-		Writer writer = null;
-		try {
-			writer = new FileWriter(file);
-			toJson(object, knownType, elementType, writer);
-		} catch (Exception ex) {
-			throw new SerializationException("Error writing file: " + file, ex);
-		} finally {
-			try {
-				if (writer != null) writer.close();
-			} catch (IOException ignored) {
-			}
-		}
-	}
-
 	public void toJson (Object object, Writer writer) {
 		toJson(object, object == null ? null : object.getClass(), null, writer);
 	}
@@ -187,10 +153,15 @@ public class Json {
 
 	public void toJson (Object object, Class knownType, Class elementType, Writer writer) {
 		if (!(writer instanceof JsonWriter)) {
-			this.writer = new JsonWriter(writer);
-			((JsonWriter)this.writer).setOutputType(outputType);
+			writer = new JsonWriter(writer);
 		}
-		writeValue(object, knownType, elementType);
+		((JsonWriter)writer).setOutputType(outputType);
+		this.writer = (JsonWriter)writer;
+		try {
+			writeValue(object, knownType, elementType);
+		} finally {
+			this.writer = null;
+		}
 	}
 
 	public void writeFields (Object object) {
@@ -198,7 +169,7 @@ public class Json {
 
 		Object[] defaultValues = getDefaultValues(type);
 
-		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
+		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		int i = 0;
 		for (FieldMetadata metadata : fields.values()) {
@@ -216,12 +187,12 @@ public class Json {
 				writer.name(field.getName());
 				writeValue(value, field.getType(), metadata.elementType);
 			} catch (IllegalAccessException ex) {
-				throw new SerializationException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
-			} catch (SerializationException ex) {
+				throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+			} catch (JsonException ex) {
 				ex.addTrace(field + " (" + type.getName() + ")");
 				throw ex;
 			} catch (Exception runtimeEx) {
-				SerializationException ex = new SerializationException(runtimeEx);
+				JsonException ex = new JsonException(runtimeEx);
 				ex.addTrace(field + " (" + type.getName() + ")");
 				throw ex;
 			}
@@ -230,31 +201,35 @@ public class Json {
 
 	private Object[] getDefaultValues (Class type) {
 		if (!usePrototypes) return null;
-		Object[] values = classToDefaultValues.get(type);
-		if (values == null) {
-			Object object = newInstance(type);
+		if (classToDefaultValues.containsKey(type)) return classToDefaultValues.get(type);
+		Object object;
+		try {
+			object = newInstance(type);
+		} catch (Exception ex) {
+			classToDefaultValues.put(type, null);
+			return null;
+		}
 
-			HashMap<String, FieldMetadata> fields = typeToFields.get(type);
-			if (fields == null) fields = cacheFields(type);
+		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
+		if (fields == null) fields = cacheFields(type);
 
-			values = new Object[fields.size()];
-			classToDefaultValues.put(type, values);
+		Object[] values = new Object[fields.size];
+		classToDefaultValues.put(type, values);
 
-			int i = 0;
-			for (FieldMetadata metadata : fields.values()) {
-				Field field = metadata.field;
-				try {
-					values[i++] = field.get(object);
-				} catch (IllegalAccessException ex) {
-					throw new SerializationException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
-				} catch (SerializationException ex) {
-					ex.addTrace(field + " (" + type.getName() + ")");
-					throw ex;
-				} catch (RuntimeException runtimeEx) {
-					SerializationException ex = new SerializationException(runtimeEx);
-					ex.addTrace(field + " (" + type.getName() + ")");
-					throw ex;
-				}
+		int i = 0;
+		for (FieldMetadata metadata : fields.values()) {
+			Field field = metadata.field;
+			try {
+				values[i++] = field.get(object);
+			} catch (IllegalAccessException ex) {
+				throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+			} catch (JsonException ex) {
+				ex.addTrace(field + " (" + type.getName() + ")");
+				throw ex;
+			} catch (RuntimeException runtimeEx) {
+				JsonException ex = new JsonException(runtimeEx);
+				ex.addTrace(field + " (" + type.getName() + ")");
+				throw ex;
 			}
 		}
 		return values;
@@ -274,10 +249,10 @@ public class Json {
 
 	public void writeField (Object object, String fieldName, String jsonName, Class elementType) {
 		Class type = object.getClass();
-		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
+		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
-		if (metadata == null) throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
+		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		Field field = metadata.field;
 		if (elementType == null) elementType = metadata.elementType;
 		try {
@@ -285,12 +260,12 @@ public class Json {
 			writer.name(jsonName);
 			writeValue(field.get(object), field.getType(), elementType);
 		} catch (IllegalAccessException ex) {
-			throw new SerializationException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
-		} catch (SerializationException ex) {
+			throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+		} catch (JsonException ex) {
 			ex.addTrace(field + " (" + type.getName() + ")");
 			throw ex;
 		} catch (Exception runtimeEx) {
-			SerializationException ex = new SerializationException(runtimeEx);
+			JsonException ex = new JsonException(runtimeEx);
 			ex.addTrace(field + " (" + type.getName() + ")");
 			throw ex;
 		}
@@ -300,7 +275,7 @@ public class Json {
 		try {
 			writer.name(name);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		writeValue(value, value.getClass(), null);
 	}
@@ -309,7 +284,7 @@ public class Json {
 		try {
 			writer.name(name);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		writeValue(value, knownType, null);
 	}
@@ -318,7 +293,7 @@ public class Json {
 		try {
 			writer.name(name);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		writeValue(value, knownType, elementType);
 	}
@@ -347,14 +322,14 @@ public class Json {
 				return;
 			}
 
-			if (value instanceof Serializable) {
+			if (value instanceof JsonSerializable) {
 				writeObjectStart(actualType, knownType);
-				((Serializable)value).write(this);
+				((JsonSerializable)value).write(this);
 				writeObjectEnd();
 				return;
 			}
 
-			Serializer serializer = classToSerializer.get(actualType);
+			JsonSerializer serializer = classToSerializer.get(actualType);
 			if (serializer != null) {
 				serializer.write(this, value, knownType);
 				return;
@@ -362,7 +337,7 @@ public class Json {
 
 			if (value instanceof Collection) {
 				if (knownType != null && actualType != knownType)
-					throw new SerializationException("Serialization of a Collection other than the known type is not supported.\n"
+					throw new JsonException("Serialization of a Collection other than the known type is not supported.\n"
 						+ "Known type: " + knownType + "\nActual type: " + actualType);
 				writeArrayStart();
 				for (Object item : (Collection)value)
@@ -381,8 +356,31 @@ public class Json {
 				return;
 			}
 
+			if (value instanceof OrderedMap) {
+				if (knownType == null) knownType = OrderedMap.class;
+				writeObjectStart(actualType, knownType);
+				OrderedMap map = (OrderedMap)value;
+				for (Object key : map.orderedKeys()) {
+					writer.name(convertToString(key));
+					writeValue(map.get(key), elementType, null);
+				}
+				writeObjectEnd();
+				return;
+			}
+
+			if (value instanceof ObjectMap) {
+				if (knownType == null) knownType = OrderedMap.class;
+				writeObjectStart(actualType, knownType);
+				for (Entry entry : ((ObjectMap<?, ?>)value).entries()) {
+					writer.name(convertToString(entry.key));
+					writeValue(entry.value, elementType, null);
+				}
+				writeObjectEnd();
+				return;
+			}
+
 			if (value instanceof Map) {
-				if (knownType == null) knownType = HashMap.class;
+				if (knownType == null) knownType = OrderedMap.class;
 				writeObjectStart(actualType, knownType);
 				for (Map.Entry entry : ((Map<?, ?>)value).entrySet()) {
 					writer.name(convertToString(entry.getKey()));
@@ -401,7 +399,7 @@ public class Json {
 			writeFields(value);
 			writeObjectEnd();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -409,7 +407,7 @@ public class Json {
 		try {
 			writer.name(name);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		writeObjectStart();
 	}
@@ -418,7 +416,7 @@ public class Json {
 		try {
 			writer.name(name);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		writeObjectStart(actualType, knownType);
 	}
@@ -427,7 +425,7 @@ public class Json {
 		try {
 			writer.object();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -435,7 +433,7 @@ public class Json {
 		try {
 			writer.object();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		if (knownType == null || knownType != actualType) writeType(actualType);
 	}
@@ -444,7 +442,7 @@ public class Json {
 		try {
 			writer.pop();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -453,7 +451,7 @@ public class Json {
 			writer.name(name);
 			writer.array();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -461,7 +459,7 @@ public class Json {
 		try {
 			writer.array();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -469,7 +467,7 @@ public class Json {
 		try {
 			writer.pop();
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -480,7 +478,7 @@ public class Json {
 		try {
 			writer.set(typeName, className);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		}
 		if (debug) System.out.println("Writing type: " + type.getName());
 	}
@@ -501,22 +499,6 @@ public class Json {
 		return (T)readValue(type, elementType, new JsonReader().parse(input));
 	}
 
-	public <T> T fromJson (Class<T> type, File file) {
-		try {
-			return (T)readValue(type, null, new JsonReader().parse(file));
-		} catch (Exception ex) {
-			throw new SerializationException("Error reading file: " + file, ex);
-		}
-	}
-
-	public <T> T fromJson (Class<T> type, Class elementType, File file) {
-		try {
-			return (T)readValue(type, elementType, new JsonReader().parse(file));
-		} catch (Exception ex) {
-			throw new SerializationException("Error reading file: " + file, ex);
-		}
-	}
-
 	public <T> T fromJson (Class<T> type, char[] data, int offset, int length) {
 		return (T)readValue(type, null, new JsonReader().parse(data, offset, length));
 	}
@@ -533,135 +515,147 @@ public class Json {
 		return (T)readValue(type, elementType, new JsonReader().parse(json));
 	}
 
-	public void readField (Object object, String name, JsonObject jsonData) {
+	public void readField (Object object, String name, Object jsonData) {
 		readField(object, name, name, null, jsonData);
 	}
 
-	public void readField (Object object, String name, Class elementType, JsonObject jsonData) {
+	public void readField (Object object, String name, Class elementType, Object jsonData) {
 		readField(object, name, name, elementType, jsonData);
 	}
 
-	public void readField (Object object, String fieldName, String jsonName, JsonObject jsonData) {
+	public void readField (Object object, String fieldName, String jsonName, Object jsonData) {
 		readField(object, fieldName, jsonName, null, jsonData);
 	}
 
-	public void readField (Object object, String fieldName, String jsonName, Class elementType, JsonObject jsonData) {
-		JsonMap jsonMap = (JsonMap)jsonData;
+	public void readField (Object object, String fieldName, String jsonName, Class elementType, Object jsonData) {
+		OrderedMap jsonMap = (OrderedMap)jsonData;
 		Class type = object.getClass();
-		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
+		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
-		if (metadata == null) throw new SerializationException("Field not found: " + fieldName + " (" + type.getName() + ")");
+		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		Field field = metadata.field;
-		JsonObject jsonValue = jsonMap.get(jsonName);
+		Object jsonValue = jsonMap.get(jsonName);
 		if (jsonValue == null) return;
 		if (elementType == null) elementType = metadata.elementType;
 		try {
 			field.set(object, readValue(field.getType(), elementType, jsonValue));
 		} catch (IllegalAccessException ex) {
-			throw new SerializationException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
-		} catch (SerializationException ex) {
+			throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+		} catch (JsonException ex) {
 			ex.addTrace(field.getName() + " (" + type.getName() + ")");
 			throw ex;
 		} catch (RuntimeException runtimeEx) {
-			SerializationException ex = new SerializationException(runtimeEx);
+			JsonException ex = new JsonException(runtimeEx);
 			ex.addTrace(field.getName() + " (" + type.getName() + ")");
 			throw ex;
 		}
 	}
 
-	public void readFields (Object object, JsonObject jsonData) {
-		JsonMap jsonMap = (JsonMap)jsonData;
+	public void readFields (Object object, Object jsonData) {
+		OrderedMap<String, Object> jsonMap = (OrderedMap)jsonData;
 		Class type = object.getClass();
-		HashMap<String, FieldMetadata> fields = typeToFields.get(type);
+		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
-		for (Entry<String, JsonObject> entry : jsonMap.entrySet()) {
-			FieldMetadata metadata = fields.get(entry.getKey());
+		for (Entry<String, Object> entry : jsonMap.entries()) {
+			FieldMetadata metadata = fields.get(entry.key);
+			if (metadata == null) {
+				if (ignoreUnknownFields) {
+					if (debug) System.out.println("Ignoring unknown field: " + entry.key + " (" + type.getName() + ")");
+					continue;
+				} else
+					throw new JsonException("Field not found: " + entry.key + " (" + type.getName() + ")");
+			}
 			Field field = metadata.field;
-			if (ignoreUnknownFields) {
-				if (debug) System.out.println("Ignoring unknown field: " + entry.getKey() + " (" + type.getName() + ")");
-			} else if (field == null)
-				throw new SerializationException("Field not found: " + entry.getKey() + " (" + type.getName() + ")");
-			if (entry.getValue() == null) continue;
+			if (entry.value == null) continue;
 			try {
-				field.set(object, readValue(field.getType(), metadata.elementType, entry.getValue()));
+				field.set(object, readValue(field.getType(), metadata.elementType, entry.value));
 			} catch (IllegalAccessException ex) {
-				throw new SerializationException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
-			} catch (SerializationException ex) {
+				throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+			} catch (JsonException ex) {
 				ex.addTrace(field.getName() + " (" + type.getName() + ")");
 				throw ex;
 			} catch (RuntimeException runtimeEx) {
-				SerializationException ex = new SerializationException(runtimeEx);
+				JsonException ex = new JsonException(runtimeEx);
 				ex.addTrace(field.getName() + " (" + type.getName() + ")");
 				throw ex;
 			}
 		}
 	}
 
-	public <T> T readValue (String name, Class<T> type, JsonObject jsonData) {
-		JsonMap jsonMap = (JsonMap)jsonData;
+	public <T> T readValue (String name, Class<T> type, Object jsonData) {
+		OrderedMap jsonMap = (OrderedMap)jsonData;
 		return (T)readValue(type, null, jsonMap.get(name));
 	}
 
-	public <T> T readValue (String name, Class<T> type, T defaultValue, JsonObject jsonData) {
-		JsonMap jsonMap = (JsonMap)jsonData;
-		JsonObject jsonValue = jsonMap.get(name);
+	public <T> T readValue (String name, Class<T> type, T defaultValue, Object jsonData) {
+		OrderedMap jsonMap = (OrderedMap)jsonData;
+		Object jsonValue = jsonMap.get(name);
 		if (jsonValue == null) return defaultValue;
 		return (T)readValue(type, null, jsonValue);
 	}
 
-	public <T> T readValue (String name, Class<T> type, Class elementType, JsonObject jsonData) {
-		JsonMap jsonMap = (JsonMap)jsonData;
+	public <T> T readValue (String name, Class<T> type, Class elementType, Object jsonData) {
+		OrderedMap jsonMap = (OrderedMap)jsonData;
 		return (T)readValue(type, elementType, jsonMap.get(name));
 	}
 
-	public <T> T readValue (String name, Class<T> type, Class elementType, T defaultValue, JsonObject jsonData) {
-		JsonMap jsonMap = (JsonMap)jsonData;
-		JsonObject jsonValue = jsonMap.get(name);
+	public <T> T readValue (String name, Class<T> type, Class elementType, T defaultValue, Object jsonData) {
+		OrderedMap jsonMap = (OrderedMap)jsonData;
+		Object jsonValue = jsonMap.get(name);
 		if (jsonValue == null) return defaultValue;
 		return (T)readValue(type, elementType, jsonValue);
 	}
 
-	public <T> T readValue (Class<T> type, Class elementType, T defaultValue, JsonObject jsonData) {
+	public <T> T readValue (Class<T> type, Class elementType, T defaultValue, Object jsonData) {
 		return (T)readValue(type, elementType, jsonData);
 	}
 
-	public <T> T readValue (Class<T> type, JsonObject jsonData) {
+	public <T> T readValue (Class<T> type, Object jsonData) {
 		return (T)readValue(type, null, jsonData);
 	}
 
-	public <T> T readValue (Class<T> type, Class elementType, JsonObject jsonData) {
-		if (jsonData instanceof JsonMap) {
-			JsonMap jsonMap = (JsonMap)jsonData;
+	public <T> T readValue (Class<T> type, Class elementType, Object jsonData) {
+		if (jsonData == null) return null;
 
-			JsonObject className = typeName == null ? null : jsonMap.remove(typeName);
-			if (className instanceof JsonValue) {
+		if (jsonData instanceof OrderedMap) {
+			OrderedMap<String, Object> jsonMap = (OrderedMap)jsonData;
+
+			String className = typeName == null ? null : (String)jsonMap.remove(typeName);
+			if (className != null) {
 				try {
-					type = (Class<T>)Class.forName(className.toString());
+					type = (Class<T>)Class.forName(className);
 				} catch (ClassNotFoundException ex) {
 					type = tagToClass.get(className);
-					if (type == null) throw new SerializationException(ex);
+					if (type == null) throw new JsonException(ex);
 				}
 			}
 
 			Object object;
 			if (type != null) {
-				Serializer serializer = classToSerializer.get(type);
+				JsonSerializer serializer = classToSerializer.get(type);
 				if (serializer != null) return (T)serializer.read(this, jsonMap, type);
 
 				object = newInstance(type);
 
-				if (object instanceof Serializable) {
-					((Serializable)object).read(this, jsonMap);
+				if (object instanceof JsonSerializable) {
+					((JsonSerializable)object).read(this, jsonMap);
 					return (T)object;
 				}
-			} else
-				object = new HashMap();
 
-			if (object instanceof HashMap) {
-				HashMap result = (HashMap)object;
-				for (Entry<String, JsonObject> entry : jsonMap.entrySet())
-					result.put(entry.getKey(), readValue(elementType, null, entry.getValue()));
+				if (object instanceof HashMap) {
+					HashMap result = (HashMap)object;
+					for (Entry entry : jsonMap.entries())
+						result.put(entry.key, readValue(elementType, null, entry.value));
+					return (T)result;
+				}
+			} else
+				object = new OrderedMap();
+
+			if (object instanceof ObjectMap) {
+				ObjectMap result = (ObjectMap)object;
+				for (String key : jsonMap.orderedKeys())
+					result.put(key, readValue(elementType, null, jsonMap.get(key)));
 				return (T)result;
 			}
 
@@ -670,17 +664,17 @@ public class Json {
 		}
 
 		if (type != null) {
-			Serializer serializer = classToSerializer.get(type);
+			JsonSerializer serializer = classToSerializer.get(type);
 			if (serializer != null) return (T)serializer.read(this, jsonData, type);
 		}
 
-		if (jsonData instanceof JsonArray) {
-			JsonArray array = (JsonArray)jsonData;
+		if (jsonData instanceof ArrayList) {
+			ArrayList array = (ArrayList)jsonData;
 			if (type == null || type.isAssignableFrom(ArrayList.class)) {
-				ArrayList newList = new ArrayList(array.size());
+				ArrayList newArray = new ArrayList(array.size());
 				for (int i = 0, n = array.size(); i < n; i++)
-					newList.add(readValue(elementType, null, array.get(i)));
-				return (T)newList;
+					newArray.add(readValue(elementType, null, array.get(i)));
+				return (T)newArray;
 			}
 			if (type.isArray()) {
 				Class componentType = type.getComponentType();
@@ -690,38 +684,52 @@ public class Json {
 					java.lang.reflect.Array.set(newArray, i, readValue(elementType, null, array.get(i)));
 				return (T)newArray;
 			}
-			throw new SerializationException("Unable to convert value to required type: " + jsonData + " (" + type.getName() + ")");
+			throw new JsonException("Unable to convert value to required type: " + jsonData + " (" + type.getName() + ")");
 		}
 
-		if (jsonData instanceof JsonValue) {
-			JsonValue value = (JsonValue)jsonData;
-			if (type == null) return (T)value.get();
-			if (type == String.class) return (T)value.toString();
+		if (jsonData instanceof Float) {
+			Float floatValue = (Float)jsonData;
 			try {
-				if (type == float.class || type == Float.class) return (T)(Float)value.toFloat();
-				if (type == int.class || type == Integer.class) return (T)(Integer)value.toInt();
-				if (type == long.class || type == Long.class) return (T)(Long)value.toLong();
-				if (type == double.class || type == Double.class) return (T)(Double)value.toDouble();
-				if (type == short.class || type == Short.class) return (T)(Short)value.toShort();
-				if (type == byte.class || type == Byte.class) return (T)(Byte)value.toByte();
+				if (type == null || type == float.class || type == Float.class) return (T)(Float)floatValue;
+				if (type == int.class || type == Integer.class) return (T)(Integer)floatValue.intValue();
+				if (type == long.class || type == Long.class) return (T)(Long)floatValue.longValue();
+				if (type == double.class || type == Double.class) return (T)(Double)floatValue.doubleValue();
+				if (type == short.class || type == Short.class) return (T)(Short)floatValue.shortValue();
+				if (type == byte.class || type == Byte.class) return (T)(Byte)floatValue.byteValue();
 			} catch (NumberFormatException ignored) {
 			}
-			if (type == boolean.class || type == Boolean.class) return (T)(Boolean)value.toBoolean();
-			if (type == char.class || type == Character.class) return (T)(Character)value.toChar();
-			String string = value.toString();
+			jsonData = String.valueOf(jsonData);
+		}
+
+		if (jsonData instanceof Boolean) jsonData = String.valueOf(jsonData);
+
+		if (jsonData instanceof String) {
+			String string = (String)jsonData;
+			if (type == null || type == String.class) return (T)jsonData;
+			try {
+				if (type == int.class || type == Integer.class) return (T)Integer.valueOf(string);
+				if (type == float.class || type == Float.class) return (T)Float.valueOf(string);
+				if (type == long.class || type == Long.class) return (T)Long.valueOf(string);
+				if (type == double.class || type == Double.class) return (T)Double.valueOf(string);
+				if (type == short.class || type == Short.class) return (T)Short.valueOf(string);
+				if (type == byte.class || type == Byte.class) return (T)Byte.valueOf(string);
+			} catch (NumberFormatException ignored) {
+			}
+			if (type == boolean.class || type == Boolean.class) return (T)Boolean.valueOf(string);
+			if (type == char.class || type == Character.class) return (T)(Character)string.charAt(0);
 			if (type.isEnum()) {
 				Object[] constants = type.getEnumConstants();
 				for (int i = 0, n = constants.length; i < n; i++)
 					if (string.equals(constants[i].toString())) return (T)constants[i];
 			}
 			if (type == CharSequence.class) return (T)string;
-			throw new SerializationException("Unable to convert value to required type: " + jsonData + " (" + type.getName() + ")");
+			throw new JsonException("Unable to convert value to required type: " + jsonData + " (" + type.getName() + ")");
 		}
 
 		return null;
 	}
 
-	protected String convertToString (Object object) {
+	private String convertToString (Object object) {
 		if (object instanceof Class) return ((Class)object).getName();
 		return String.valueOf(object);
 	}
@@ -737,105 +745,120 @@ public class Json {
 				return constructor.newInstance();
 			} catch (SecurityException ignored) {
 			} catch (NoSuchMethodException ignored) {
-				if (type.isMemberClass() && !Modifier.isStatic(type.getModifiers()))
-					throw new SerializationException("Class cannot be created (non-static member class): " + type.getName(), ex);
+				if (type.isArray())
+					throw new JsonException("Encountered JSON object when expected array of type: " + type.getName(), ex);
+				else if (type.isMemberClass() && !Modifier.isStatic(type.getModifiers()))
+					throw new JsonException("Class cannot be created (non-static member class): " + type.getName(), ex);
 				else
-					throw new SerializationException("Class cannot be created (missing no-arg constructor): " + type.getName(), ex);
+					throw new JsonException("Class cannot be created (missing no-arg constructor): " + type.getName(), ex);
 			} catch (Exception privateConstructorException) {
 				ex = privateConstructorException;
 			}
-			throw new SerializationException("Error constructing instance of class: " + type.getName(), ex);
+			throw new JsonException("Error constructing instance of class: " + type.getName(), ex);
 		}
 	}
 
 	public String prettyPrint (Object object) {
-		return prettyPrint(object, false);
+		return prettyPrint(object, 0);
 	}
 
 	public String prettyPrint (String json) {
-		return prettyPrint(json, false);
+		return prettyPrint(json, 0);
 	}
 
-	public String prettyPrint (Object object, boolean fieldsOnSameLine) {
-		return prettyPrint(toJson(object), fieldsOnSameLine);
+	public String prettyPrint (Object object, int singleLineColumns) {
+		return prettyPrint(toJson(object), singleLineColumns);
 	}
 
-	public String prettyPrint (String json, boolean fieldsOnSameLine) {
+	public String prettyPrint (String json, int singleLineColumns) {
 		StringBuilder buffer = new StringBuilder(512);
-		prettyPrint(new JsonReader().parse(json), buffer, 0, fieldsOnSameLine);
+		prettyPrint(new JsonReader().parse(json), buffer, 0, singleLineColumns);
 		return buffer.toString();
 	}
 
-	private void prettyPrint (JsonObject object, StringBuilder buffer, int indent, boolean fieldsOnSameLine) {
-		if (object instanceof JsonMap) {
-			JsonMap map = (JsonMap)object;
-			if (map.size() == 0) {
+	private void prettyPrint (Object object, StringBuilder buffer, int indent, int singleLineColumns) {
+		if (object instanceof OrderedMap) {
+			OrderedMap<String, ?> map = (OrderedMap)object;
+			if (map.size == 0) {
 				buffer.append("{}");
 			} else {
-				boolean newLines = !fieldsOnSameLine || !isFlat(map);
-				buffer.append(newLines ? "{\n" : "{ ");
-				int i = 0;
-				for (Entry<String, JsonObject> entry : map.entrySet()) {
-					if (newLines) indent(indent, buffer);
-					buffer.append(outputType.quoteName((String)entry.getKey()));
-					buffer.append(": ");
-					prettyPrint(entry.getValue(), buffer, indent + 1, fieldsOnSameLine);
-					if (i++ < map.size() - 1) buffer.append(",");
-					buffer.append(newLines ? '\n' : ' ');
+				boolean newLines = !isFlat(map);
+				int start = buffer.length();
+				outer:
+				while (true) {
+					buffer.append(newLines ? "{\n" : "{ ");
+					int i = 0;
+					for (String key : map.orderedKeys()) {
+						if (newLines) indent(indent, buffer);
+						buffer.append(outputType.quoteName(key));
+						buffer.append(": ");
+						prettyPrint(map.get(key), buffer, indent + 1, singleLineColumns);
+						if (i++ < map.size - 1) buffer.append(",");
+						buffer.append(newLines ? '\n' : ' ');
+						if (!newLines && buffer.length() - start > singleLineColumns) {
+							buffer.setLength(start);
+							newLines = true;
+							continue outer;
+						}
+					}
+					break;
 				}
 				if (newLines) indent(indent - 1, buffer);
 				buffer.append('}');
 			}
-		} else if (object instanceof JsonArray) {
-			JsonArray array = (JsonArray)object;
-			if (array.isEmpty()) {
+		} else if (object instanceof ArrayList) {
+			ArrayList array = (ArrayList)object;
+			if (array.size() == 0) {
 				buffer.append("[]");
 			} else {
-				boolean newLines = !fieldsOnSameLine || !isFlat(array);
-				buffer.append(newLines ? "[\n" : "[ ");
-				for (int i = 0, n = array.size(); i < n; i++) {
-					if (newLines) indent(indent, buffer);
-					prettyPrint(array.get(i), buffer, indent + 1, fieldsOnSameLine);
-					if (i < n - 1) buffer.append(",");
-					buffer.append(newLines ? '\n' : ' ');
+				boolean newLines = !isFlat(array);
+				int start = buffer.length();
+				outer:
+				while (true) {
+					buffer.append(newLines ? "[\n" : "[ ");
+					for (int i = 0, n = array.size(); i < n; i++) {
+						if (newLines) indent(indent, buffer);
+						prettyPrint(array.get(i), buffer, indent + 1, singleLineColumns);
+						if (i < array.size() - 1) buffer.append(",");
+						buffer.append(newLines ? '\n' : ' ');
+						if (!newLines && buffer.length() - start > singleLineColumns) {
+							buffer.setLength(start);
+							newLines = true;
+							continue outer;
+						}
+					}
+					break;
 				}
 				if (newLines) indent(indent - 1, buffer);
 				buffer.append(']');
 			}
+		} else if (object instanceof String) {
+			buffer.append(outputType.quoteValue((String)object));
+		} else if (object instanceof Float) {
+			Float floatValue = (Float)object;
+			int intValue = floatValue.intValue();
+			buffer.append(floatValue - intValue == 0 ? intValue : object);
+		} else if (object instanceof Boolean) {
+			buffer.append(object);
 		} else if (object == null) {
 			buffer.append("null");
-		} else if (object instanceof JsonValue) {
-			JsonValue value = (JsonValue)object;
-			switch (value.getType()) {
-			case string:
-				buffer.append(outputType.quoteValue(value.toString()));
-				break;
-			case number:
-				Float floatValue = value.toFloat();
-				int intValue = floatValue.intValue();
-				buffer.append(floatValue - intValue == 0 ? intValue : object);
-				break;
-			case bool:
-				buffer.append(value.toBoolean());
-				break;
-			}
 		} else
-			throw new SerializationException("Unknown object type: " + object.getClass());
+			throw new JsonException("Unknown object type: " + object.getClass());
 	}
 
-	static private boolean isFlat (JsonMap map) {
-		for (Entry entry : map.entrySet()) {
-			if (entry.getValue() instanceof JsonMap) return false;
-			if (entry.getValue() instanceof JsonArray) return false;
+	static private boolean isFlat (ObjectMap<?, ?> map) {
+		for (Entry entry : map.entries()) {
+			if (entry.value instanceof ObjectMap) return false;
+			if (entry.value instanceof ArrayList) return false;
 		}
 		return true;
 	}
 
-	static private boolean isFlat (JsonArray array) {
+	static private boolean isFlat (ArrayList array) {
 		for (int i = 0, n = array.size(); i < n; i++) {
-			JsonObject value = array.get(i);
-			if (value instanceof JsonMap) return false;
-			if (value instanceof JsonArray) return false;
+			Object value = array.get(i);
+			if (value instanceof ObjectMap) return false;
+			if (value instanceof ArrayList) return false;
 		}
 		return true;
 	}
@@ -852,17 +875,5 @@ public class Json {
 		public FieldMetadata (Field field) {
 			this.field = field;
 		}
-	}
-
-	static public interface Serializer<T> {
-		public void write (Json json, T object, Class knownType);
-
-		public T read (Json json, JsonObject jsonData, Class type);
-	}
-
-	static public interface Serializable {
-		public void write (Json json);
-
-		public void read (Json json, JsonMap jsonMap);
 	}
 }
