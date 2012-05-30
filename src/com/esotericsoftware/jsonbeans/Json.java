@@ -336,7 +336,7 @@ public class Json {
 			}
 
 			if (value instanceof Collection) {
-				if (knownType != null && actualType != knownType)
+				if (knownType != null && actualType != knownType && actualType != ArrayList.class)
 					throw new JsonException("Serialization of a Collection other than the known type is not supported.\n"
 						+ "Known type: " + knownType + "\nActual type: " + actualType);
 				writeArrayStart();
