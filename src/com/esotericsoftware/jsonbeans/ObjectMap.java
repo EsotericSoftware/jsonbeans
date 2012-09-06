@@ -1,3 +1,18 @@
+/*******************************************************************************
+ * Copyright 2011 See AUTHORS file.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ******************************************************************************/
 
 package com.esotericsoftware.jsonbeans;
 
@@ -14,11 +29,9 @@ import java.util.Random;
  * next higher POT size.
  * @author Nathan Sweet */
 public class ObjectMap<K, V> {
-	static private final int PRIME1 = 0xbe1f14b1;
-	static private final int PRIME2 = 0xb4b82e39;
-	static private final int PRIME3 = 0xced1c241;
-
-	static Random random = new Random();
+	private static final int PRIME1 = 0xbe1f14b1;
+	private static final int PRIME2 = 0xb4b82e39;
+	private static final int PRIME3 = 0xced1c241;
 
 	public int size;
 
@@ -60,8 +73,8 @@ public class ObjectMap<K, V> {
 		threshold = (int)(capacity * loadFactor);
 		mask = capacity - 1;
 		hashShift = 31 - Integer.numberOfTrailingZeros(capacity);
-		stashCapacity = Math.max(3, (int)Math.ceil(Math.log(capacity)) + 1);
-		pushIterations = Math.max(Math.min(capacity, 32), (int)Math.sqrt(capacity) / 4);
+		stashCapacity = Math.max(3, (int)Math.ceil(Math.log(capacity)) * 2);
+		pushIterations = Math.max(Math.min(capacity, 8), (int)Math.sqrt(capacity) / 8);
 
 		keyTable = (K[])new Object[capacity + stashCapacity];
 		valueTable = (V[])new Object[keyTable.length];
@@ -74,6 +87,8 @@ public class ObjectMap<K, V> {
 	}
 
 	private V put_internal (K key, V value) {
+		K[] keyTable = this.keyTable;
+
 		// Check for existing keys.
 		int hashCode = key.hashCode();
 		int index1 = hashCode & mask;
@@ -98,6 +113,15 @@ public class ObjectMap<K, V> {
 			V oldValue = valueTable[index3];
 			valueTable[index3] = value;
 			return oldValue;
+		}
+
+		// Update key in the stash.
+		for (int i = capacity, n = i + stashSize; i < n; i++) {
+			if (key.equals(keyTable[i])) {
+				V oldValue = valueTable[i];
+				valueTable[i] = value;
+				return oldValue;
+			}
 		}
 
 		// Check for empty buckets.
@@ -241,14 +265,6 @@ public class ObjectMap<K, V> {
 			resize(capacity << 1);
 			put_internal(key, value);
 			return;
-		}
-		// Update key in the stash.
-		K[] keyTable = this.keyTable;
-		for (int i = capacity, n = i + stashSize; i < n; i++) {
-			if (key.equals(keyTable[i])) {
-				valueTable[i] = value;
-				return;
-			}
 		}
 		// Store key in the stash.
 		int index = capacity + stashSize;
@@ -420,8 +436,8 @@ public class ObjectMap<K, V> {
 		threshold = (int)(newSize * loadFactor);
 		mask = newSize - 1;
 		hashShift = 31 - Integer.numberOfTrailingZeros(newSize);
-		stashCapacity = Math.max(3, (int)Math.ceil(Math.log(newSize)));
-		pushIterations = Math.max(Math.min(capacity, 32), (int)Math.sqrt(capacity) / 4);
+		stashCapacity = Math.max(3, (int)Math.ceil(Math.log(newSize)) * 2);
+		pushIterations = Math.max(Math.min(newSize, 8), (int)Math.sqrt(newSize) / 8);
 
 		K[] oldKeyTable = keyTable;
 		V[] oldValueTable = valueTable;
@@ -437,14 +453,14 @@ public class ObjectMap<K, V> {
 		}
 	}
 
-	private int hash2 (long h) {
+	private int hash2 (int h) {
 		h *= PRIME2;
-		return (int)((h ^ h >>> hashShift) & mask);
+		return (h ^ h >>> hashShift) & mask;
 	}
 
-	private int hash3 (long h) {
+	private int hash3 (int h) {
 		h *= PRIME3;
-		return (int)((h ^ h >>> hashShift) & mask);
+		return (h ^ h >>> hashShift) & mask;
 	}
 
 	public String toString () {
@@ -516,9 +532,8 @@ public class ObjectMap<K, V> {
 	static private class MapIterator<K, V> {
 		public boolean hasNext;
 
-		protected final ObjectMap<K, V> map;
-		int currentIndex;
-		protected int nextIndex;
+		final ObjectMap<K, V> map;
+		int nextIndex, currentIndex;
 
 		public MapIterator (ObjectMap<K, V> map) {
 			this.map = map;
@@ -531,7 +546,7 @@ public class ObjectMap<K, V> {
 			advance();
 		}
 
-		protected void advance () {
+		void advance () {
 			hasNext = false;
 			K[] keyTable = map.keyTable;
 			for (int n = map.capacity + map.stashSize; ++nextIndex < n;) {
@@ -556,7 +571,7 @@ public class ObjectMap<K, V> {
 	}
 
 	static public class Entries<K, V> extends MapIterator<K, V> implements Iterable<Entry<K, V>>, Iterator<Entry<K, V>> {
-		protected Entry<K, V> entry = new Entry();
+		Entry<K, V> entry = new Entry();
 
 		public Entries (ObjectMap<K, V> map) {
 			super(map);
@@ -610,8 +625,7 @@ public class ObjectMap<K, V> {
 			return array;
 		}
 
-		/** Adds the value entries to the given array.
-		 * @param array */
+		/** Adds the remaining values to the specified array. */
 		public void toArray (ArrayList<V> array) {
 			while (hasNext)
 				array.add(next());
@@ -647,7 +661,9 @@ public class ObjectMap<K, V> {
 		}
 	}
 
-	static public int nextPowerOfTwo (int value) {
+	static final Random random = new Random();
+
+	static int nextPowerOfTwo (int value) {
 		if (value == 0) return 1;
 		value--;
 		value |= value >> 1;

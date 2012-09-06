@@ -16,18 +16,17 @@
  * limitations under the License.
  ******************************************************************************/
 
-package com.badlogic.gdx.utils;
+package com.esotericsoftware.jsonbeans;
 
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
-
-import com.badlogic.gdx.files.FileHandle;
+import java.util.ArrayList;
 
 /** Lightweight JSON parser.<br>
  * <br>
- * The default behavior is to parse the JSON into a DOM made up of {@link OrderedMap}, {@link Array}, String, Float, and Boolean objects.
+ * The default behavior is to parse the JSON into a DOM made up of {@link OrderedMap}, {@link ArrayList}, String, Float, and Boolean objects.
  * Extend this class and override methods to perform event driven parsing. When this is done, the parse methods will return null.
  * @author Nathan Sweet */
 public class JsonReader {
@@ -52,7 +51,7 @@ public class JsonReader {
 			}
 			return parse(data, 0, offset);
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
+			throw new JsonException(ex);
 		} finally {
 			try {
 				reader.close();
@@ -65,15 +64,7 @@ public class JsonReader {
 		try {
 			return parse(new InputStreamReader(input, "ISO-8859-1"));
 		} catch (IOException ex) {
-			throw new SerializationException(ex);
-		}
-	}
-
-	public Object parse (FileHandle file) {
-		try {
-			return parse(file.read());
-		} catch (Exception ex) {
-			throw new SerializationException("Error parsing file: " + file, ex);
+			throw new JsonException(ex);
 		}
 	}
 
@@ -82,8 +73,9 @@ public class JsonReader {
 		int[] stack = new int[4];
 
 		int s = 0;
-		Array<String> names = new Array(8);
+		ArrayList<String> names = new ArrayList(8);
 		boolean needsUnescape = false;
+		boolean discardBuffer = false; // When unquotedString and true/false/null both match, this discards unquotedString.
 		RuntimeException parseRuntimeEx = null;
 
 		boolean debug = false;
@@ -104,6 +96,7 @@ public class JsonReader {
 			action buffer {
 				s = p;
 				needsUnescape = false;
+				discardBuffer = false;
 			}
 			action needsUnescape {
 				needsUnescape = true;
@@ -116,37 +109,42 @@ public class JsonReader {
 				names.add(name);
 			}
 			action string {
-				String value = new String(data, s, p - s);
-				s = p;
-				if (needsUnescape) value = unescape(value);
-				String name = names.size > 0 ? names.pop() : null;
-				if (debug) System.out.println("string: " + name + "=" + value);
-				string(name, value);
+				if (!discardBuffer) {
+					String value = new String(data, s, p - s);
+					s = p;
+					if (needsUnescape) value = unescape(value);
+					String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
+					if (debug) System.out.println("string: " + name + "=" + value);
+					string(name, value);
+				}
 			}
 			action number {
 				String value = new String(data, s, p - s);
 				s = p;
-				String name = names.size > 0 ? names.pop() : null;
+				String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 				if (debug) System.out.println("number: " + name + "=" + Float.parseFloat(value));
 				number(name, Float.parseFloat(value));
 			}
 			action trueValue {
-				String name = names.size > 0 ? names.pop() : null;
+				String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 				if (debug) System.out.println("boolean: " + name + "=true");
 				bool(name, true);
+				discardBuffer = true;
 			}
 			action falseValue {
-				String name = names.size > 0 ? names.pop() : null;
+				String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 				if (debug) System.out.println("boolean: " + name + "=false");
 				bool(name, false);
+				discardBuffer = true;
 			}
 			action null {
-				String name = names.size > 0 ? names.pop() : null;
+				String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 				if (debug) System.out.println("null: " + name);
 				string(name, null);
+				discardBuffer = true;
 			}
 			action startObject {
-				String name = names.size > 0 ? names.pop() : null;
+				String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 				if (debug) System.out.println("startObject: " + name);
 				startObject(name);
 				fcall object;
@@ -157,7 +155,7 @@ public class JsonReader {
 				fret;
 			}
 			action startArray {
-				String name = names.size > 0 ? names.pop() : null;
+				String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 				if (debug) System.out.println("startArray: " + name);
 				startArray(name);
 				fcall array;
@@ -168,19 +166,19 @@ public class JsonReader {
 				fret;
 			}
 
-			# parse single quote
+			numberChars = '-'? [0-9]+ ('.' [0-9]+)? ([eE] [+\-]? [0-9]+)?;
 			quotedChars = (^["\\] | ('\\' ["\\/bfnrtu] >needsUnescape))*;
 			unquotedChars = [a-zA-Z_$] ^([:}\],] | space)*;
-			name = ('"' quotedChars >buffer %name '"') | unquotedChars >buffer %name;
+			name = ('"' quotedChars >buffer %name '"') | unquotedChars >buffer %name | numberChars >buffer %name;
 
 			startObject = '{' @startObject;
 			startArray = '[' @startArray;
 			string = '"' quotedChars >buffer %string '"';
 			unquotedString = unquotedChars >buffer %string;
-			number = ('-'? [0-9]+ ('.' [0-9]+)? ([eE] [+\-]? [0-9]+)?) >buffer %number;
+			number = numberChars >buffer %number;
 			nullValue = 'null' %null;
 			booleanValue = 'true' %trueValue | 'false' %falseValue;
-			value = startObject | startArray | number | string | nullValue | booleanValue | unquotedString @-1;
+			value = startObject | startArray | number | string | nullValue | booleanValue | unquotedString $-1;
 
 			nameValue = name space* ':' space* value;
 
@@ -201,14 +199,14 @@ public class JsonReader {
 			int lineNumber = 1;
 			for (int i = 0; i < p; i++)
 				if (data[i] == '\n') lineNumber++;
-			throw new SerializationException("Error parsing JSON on line " + lineNumber + " near: " + new String(data, p, pe - p), parseRuntimeEx);
-		} else if (elements.size != 0) {
-			Object element = elements.peek();
+			throw new JsonException("Error parsing JSON on line " + lineNumber + " near: " + new String(data, p, pe - p), parseRuntimeEx);
+		} else if (elements.size() != 0) {
+			Object element = elements.get(0);
 			elements.clear();
 			if (element instanceof OrderedMap)
-				throw new SerializationException("Error parsing JSON, unmatched brace.");
+				throw new JsonException("Error parsing JSON, unmatched brace.");
 			else
-				throw new SerializationException("Error parsing JSON, unmatched bracket.");
+				throw new JsonException("Error parsing JSON, unmatched bracket.");
 		}
 		Object root = this.root;
 		this.root = null;
@@ -217,14 +215,14 @@ public class JsonReader {
 
 	%% write data;
 
-	private final Array elements = new Array(8);
+	private final ArrayList elements = new ArrayList(8);
 	private Object root, current;
 
 	private void set (String name, Object value) {
 		if (current instanceof OrderedMap)
 			((OrderedMap)current).put(name, value);
-		else if (current instanceof Array)
-			((Array)current).add(value);
+		else if (current instanceof ArrayList)
+			((ArrayList)current).add(value);
 		else
 			root = value;
 	}
@@ -237,15 +235,15 @@ public class JsonReader {
 	}
 
 	protected void startArray (String name) {
-		Array value = new Array();
+		ArrayList value = new ArrayList();
 		if (current != null) set(name, value);
 		elements.add(value);
 		current = value;
 	}
 
 	protected void pop () {
-		root = elements.pop();
-		current = elements.size > 0 ? elements.peek() : null;
+		root = elements.remove(elements.size() - 1);;
+		current = elements.size() > 0 ? elements.get(0) : null;
 	}
 
 	protected void string (String name, String value) {
@@ -297,7 +295,7 @@ public class JsonReader {
 				c = '\t';
 				break;
 			default:
-				throw new SerializationException("Illegal escaped character: \\" + c);
+				throw new JsonException("Illegal escaped character: \\" + c);
 			}
 			buffer.append(c);
 		}

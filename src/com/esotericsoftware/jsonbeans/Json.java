@@ -1,6 +1,25 @@
+/*******************************************************************************
+ * Copyright 2011 See AUTHORS file.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ ******************************************************************************/
 
 package com.esotericsoftware.jsonbeans;
 
+import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
+
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -16,9 +35,6 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
-import com.esotericsoftware.jsonbeans.JsonWriter.OutputType;
-import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
-
 /** Reads/writes Java objects to/from JSON, automatically.
  * @author Nathan Sweet */
 public class Json {
@@ -31,7 +47,7 @@ public class Json {
 	private final ObjectMap<Class, ObjectMap<String, FieldMetadata>> typeToFields = new ObjectMap();
 	private final ObjectMap<String, Class> tagToClass = new ObjectMap();
 	private final ObjectMap<Class, String> classToTag = new ObjectMap();
-	private final ObjectMap<Class, JsonSerializer> classToSerializer = new ObjectMap();
+	private final ObjectMap<Class, Serializer> classToSerializer = new ObjectMap();
 	private final ObjectMap<Class, Object[]> classToDefaultValues = new ObjectMap();
 	private boolean ignoreUnknownFields;
 
@@ -78,11 +94,11 @@ public class Json {
 		this.typeName = typeName;
 	}
 
-	public <T> void setSerializer (Class<T> type, JsonSerializer<T> serializer) {
+	public <T> void setSerializer (Class<T> type, Serializer<T> serializer) {
 		classToSerializer.put(type, serializer);
 	}
 
-	public <T> JsonSerializer<T> getSerializer (Class<T> type) {
+	public <T> Serializer<T> getSerializer (Class<T> type) {
 		return classToSerializer.get(type);
 	}
 
@@ -141,6 +157,29 @@ public class Json {
 		StringWriter buffer = new StringWriter();
 		toJson(object, knownType, elementType, buffer);
 		return buffer.toString();
+	}
+
+	public void toJson (Object object, File file) {
+		toJson(object, object == null ? null : object.getClass(), null, file);
+	}
+
+	public void toJson (Object object, Class knownType, File file) {
+		toJson(object, knownType, null, file);
+	}
+
+	public void toJson (Object object, Class knownType, Class elementType, File file) {
+		Writer writer = null;
+		try {
+			writer = new FileWriter(file);
+			toJson(object, knownType, elementType, writer);
+		} catch (Exception ex) {
+			throw new JsonException("Error writing file: " + file, ex);
+		} finally {
+			try {
+				if (writer != null) writer.close();
+			} catch (IOException ignored) {
+			}
+		}
 	}
 
 	public void toJson (Object object, Writer writer) {
@@ -322,14 +361,14 @@ public class Json {
 				return;
 			}
 
-			if (value instanceof JsonSerializable) {
+			if (value instanceof Serializable) {
 				writeObjectStart(actualType, knownType);
-				((JsonSerializable)value).write(this);
+				((Serializable)value).write(this);
 				writeObjectEnd();
 				return;
 			}
 
-			JsonSerializer serializer = classToSerializer.get(actualType);
+			Serializer serializer = classToSerializer.get(actualType);
 			if (serializer != null) {
 				serializer.write(this, value, knownType);
 				return;
@@ -499,6 +538,22 @@ public class Json {
 		return (T)readValue(type, elementType, new JsonReader().parse(input));
 	}
 
+	public <T> T fromJson (Class<T> type, File file) {
+		try {
+			return (T)readValue(type, null, new JsonReader().parse(file));
+		} catch (Exception ex) {
+			throw new JsonException("Error reading file: " + file, ex);
+		}
+	}
+
+	public <T> T fromJson (Class<T> type, Class elementType, File file) {
+		try {
+			return (T)readValue(type, elementType, new JsonReader().parse(file));
+		} catch (Exception ex) {
+			throw new JsonException("Error reading file: " + file, ex);
+		}
+	}
+
 	public <T> T fromJson (Class<T> type, char[] data, int offset, int length) {
 		return (T)readValue(type, null, new JsonReader().parse(data, offset, length));
 	}
@@ -633,13 +688,13 @@ public class Json {
 
 			Object object;
 			if (type != null) {
-				JsonSerializer serializer = classToSerializer.get(type);
+				Serializer serializer = classToSerializer.get(type);
 				if (serializer != null) return (T)serializer.read(this, jsonMap, type);
 
 				object = newInstance(type);
 
-				if (object instanceof JsonSerializable) {
-					((JsonSerializable)object).read(this, jsonMap);
+				if (object instanceof Serializable) {
+					((Serializable)object).read(this, jsonMap);
 					return (T)object;
 				}
 
@@ -664,13 +719,13 @@ public class Json {
 		}
 
 		if (type != null) {
-			JsonSerializer serializer = classToSerializer.get(type);
+			Serializer serializer = classToSerializer.get(type);
 			if (serializer != null) return (T)serializer.read(this, jsonData, type);
 		}
 
 		if (jsonData instanceof ArrayList) {
 			ArrayList array = (ArrayList)jsonData;
-			if (type == null || type.isAssignableFrom(ArrayList.class)) {
+			if (type == null || ArrayList.class.isAssignableFrom(type)) {
 				ArrayList newArray = new ArrayList(array.size());
 				for (int i = 0, n = array.size(); i < n; i++)
 					newArray.add(readValue(elementType, null, array.get(i)));
@@ -875,5 +930,24 @@ public class Json {
 		public FieldMetadata (Field field) {
 			this.field = field;
 		}
+	}
+
+	static public interface Serializer<T> {
+		public void write (Json json, T object, Class knownType);
+
+		public T read (Json json, Object jsonData, Class type);
+	}
+
+	static abstract public class ReadOnlySerializer<T> implements Serializer<T> {
+		public void write (Json json, T object, Class knownType) {
+		}
+
+		abstract public T read (Json json, Object jsonData, Class type);
+	}
+
+	static public interface Serializable {
+		public void write (Json json);
+
+		public void read (Json json, OrderedMap<String, Object> jsonData);
 	}
 }

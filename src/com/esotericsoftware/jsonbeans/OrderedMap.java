@@ -61,7 +61,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 
 	public Entries<K, V> entries () {
 		return new Entries(this) {
-			protected void advance () {
+			void advance () {
 				nextIndex++;
 				hasNext = nextIndex < map.size;
 			}
@@ -81,7 +81,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 
 	public Keys<K> keys () {
 		return new Keys(this) {
-			protected void advance () {
+			void advance () {
 				nextIndex++;
 				hasNext = nextIndex < map.size;
 			}
@@ -100,7 +100,7 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 
 	public Values<V> values () {
 		return new Values(this) {
-			protected void advance () {
+			void advance () {
 				nextIndex++;
 				hasNext = nextIndex < map.size;
 			}
