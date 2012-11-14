@@ -179,7 +179,7 @@ public class JsonReader {
 							while (_nacts-- > 0) {
 								switch (_json_actions[_acts++]) {
 								case 0:
-								// line 96 "JsonReader.rl"
+								// line 106 "JsonReader.rl"
 								{
 									s = p;
 									needsUnescape = false;
@@ -187,13 +187,13 @@ public class JsonReader {
 								}
 									break;
 								case 1:
-								// line 101 "JsonReader.rl"
+								// line 111 "JsonReader.rl"
 								{
 									needsUnescape = true;
 								}
 									break;
 								case 2:
-								// line 104 "JsonReader.rl"
+								// line 114 "JsonReader.rl"
 								{
 									String name = new String(data, s, p - s);
 									s = p;
@@ -203,7 +203,7 @@ public class JsonReader {
 								}
 									break;
 								case 3:
-								// line 111 "JsonReader.rl"
+								// line 121 "JsonReader.rl"
 								{
 									if (!discardBuffer) {
 										String value = new String(data, s, p - s);
@@ -216,7 +216,7 @@ public class JsonReader {
 								}
 									break;
 								case 4:
-								// line 121 "JsonReader.rl"
+								// line 131 "JsonReader.rl"
 								{
 									String value = new String(data, s, p - s);
 									s = p;
@@ -226,7 +226,7 @@ public class JsonReader {
 								}
 									break;
 								case 5:
-								// line 128 "JsonReader.rl"
+								// line 138 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("boolean: " + name + "=true");
@@ -235,7 +235,7 @@ public class JsonReader {
 								}
 									break;
 								case 6:
-								// line 134 "JsonReader.rl"
+								// line 144 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("boolean: " + name + "=false");
@@ -244,7 +244,7 @@ public class JsonReader {
 								}
 									break;
 								case 7:
-								// line 140 "JsonReader.rl"
+								// line 150 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("null: " + name);
@@ -253,7 +253,7 @@ public class JsonReader {
 								}
 									break;
 								case 8:
-								// line 146 "JsonReader.rl"
+								// line 156 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("startObject: " + name);
@@ -274,7 +274,7 @@ public class JsonReader {
 								}
 									break;
 								case 9:
-								// line 152 "JsonReader.rl"
+								// line 162 "JsonReader.rl"
 								{
 									if (debug) System.out.println("endObject");
 									pop();
@@ -286,7 +286,7 @@ public class JsonReader {
 								}
 									break;
 								case 10:
-								// line 157 "JsonReader.rl"
+								// line 167 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("startArray: " + name);
@@ -307,7 +307,7 @@ public class JsonReader {
 								}
 									break;
 								case 11:
-								// line 163 "JsonReader.rl"
+								// line 173 "JsonReader.rl"
 								{
 									if (debug) System.out.println("endArray");
 									pop();
@@ -339,7 +339,7 @@ public class JsonReader {
 							while (__nacts-- > 0) {
 								switch (_json_actions[__acts++]) {
 								case 3:
-								// line 111 "JsonReader.rl"
+								// line 121 "JsonReader.rl"
 								{
 									if (!discardBuffer) {
 										String value = new String(data, s, p - s);
@@ -352,7 +352,7 @@ public class JsonReader {
 								}
 									break;
 								case 4:
-								// line 121 "JsonReader.rl"
+								// line 131 "JsonReader.rl"
 								{
 									String value = new String(data, s, p - s);
 									s = p;
@@ -362,7 +362,7 @@ public class JsonReader {
 								}
 									break;
 								case 5:
-								// line 128 "JsonReader.rl"
+								// line 138 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("boolean: " + name + "=true");
@@ -371,7 +371,7 @@ public class JsonReader {
 								}
 									break;
 								case 6:
-								// line 134 "JsonReader.rl"
+								// line 144 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("boolean: " + name + "=false");
@@ -380,7 +380,7 @@ public class JsonReader {
 								}
 									break;
 								case 7:
-								// line 140 "JsonReader.rl"
+								// line 150 "JsonReader.rl"
 								{
 									String name = names.size() > 0 ? names.remove(names.size() - 1) : null;
 									if (debug) System.out.println("null: " + name);
@@ -399,7 +399,7 @@ public class JsonReader {
 				}
 			}
 
-			// line 193 "JsonReader.rl"
+			// line 203 "JsonReader.rl"
 
 		} catch (RuntimeException ex) {
 			parseRuntimeEx = ex;
@@ -412,7 +412,7 @@ public class JsonReader {
 			throw new JsonException("Error parsing JSON on line " + lineNumber + " near: " + new String(data, p, pe - p),
 				parseRuntimeEx);
 		} else if (elements.size() != 0) {
-			Object element = elements.get(0);
+			Object element = elements.get(elements.size() - 1);
 			elements.clear();
 			if (element instanceof OrderedMap)
 				throw new JsonException("Error parsing JSON, unmatched brace.");
@@ -557,7 +557,7 @@ public class JsonReader {
 	static final int json_en_array = 49;
 	static final int json_en_main = 1;
 
-	// line 217 "JsonReader.rl"
+	// line 227 "JsonReader.rl"
 
 	private final ArrayList elements = new ArrayList(8);
 	private Object root, current;
@@ -588,7 +588,7 @@ public class JsonReader {
 	protected void pop () {
 		root = elements.remove(elements.size() - 1);
 		;
-		current = elements.size() > 0 ? elements.get(0) : null;
+		current = elements.size() > 0 ? elements.get(elements.size() - 1) : null;
 	}
 
 	protected void string (String name, String value) {

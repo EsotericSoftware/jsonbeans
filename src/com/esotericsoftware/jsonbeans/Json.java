@@ -28,6 +28,8 @@ import java.io.Writer;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
 import java.security.AccessControlException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -52,7 +54,7 @@ public class Json {
 	private boolean ignoreUnknownFields;
 
 	public Json () {
-		outputType = OutputType.minimal;
+		outputType = OutputType.json;
 	}
 
 	public Json (OutputType outputType) {
@@ -371,6 +373,18 @@ public class Json {
 			Serializer serializer = classToSerializer.get(actualType);
 			if (serializer != null) {
 				serializer.write(this, value, knownType);
+				return;
+			}
+
+			if (value instanceof ArrayList) {
+				if (knownType != null && actualType != knownType)
+					throw new JsonException("Serialization of an Array other than the known type is not supported.\n" + "Known type: "
+						+ knownType + "\nActual type: " + actualType);
+				writeArrayStart();
+				ArrayList array = (ArrayList)value;
+				for (int i = 0, n = array.size(); i < n; i++)
+					writeValue(array.get(i), elementType, null);
+				writeArrayEnd();
 				return;
 			}
 
@@ -731,6 +745,12 @@ public class Json {
 					newArray.add(readValue(elementType, null, array.get(i)));
 				return (T)newArray;
 			}
+			if (ArrayList.class.isAssignableFrom(type)) {
+				ArrayList newArray = new ArrayList(array.size());
+				for (int i = 0, n = array.size(); i < n; i++)
+					newArray.add(readValue(elementType, null, array.get(i)));
+				return (T)newArray;
+			}
 			if (type.isArray()) {
 				Class componentType = type.getComponentType();
 				if (elementType == null) elementType = componentType;
@@ -924,11 +944,23 @@ public class Json {
 	}
 
 	static private class FieldMetadata {
-		public Field field;
-		public Class elementType;
+		Field field;
+		Class elementType;
 
 		public FieldMetadata (Field field) {
 			this.field = field;
+
+			Type genericType = field.getGenericType();
+			if (genericType instanceof ParameterizedType) {
+				Type[] actualTypes = ((ParameterizedType)genericType).getActualTypeArguments();
+				if (actualTypes.length == 1) {
+					Type actualType = actualTypes[0];
+					if (actualType instanceof Class)
+						elementType = (Class)actualType;
+					else if (actualType instanceof ParameterizedType)
+						elementType = (Class)((ParameterizedType)actualType).getRawType();
+				}
+			}
 		}
 	}
 

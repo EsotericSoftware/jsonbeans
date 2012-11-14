@@ -116,7 +116,7 @@ public class JsonWriter extends Writer {
 	public JsonWriter pop () throws IOException {
 		if (named) throw new IllegalStateException("Expected an object, array, or value since a name was set.");
 		stack.remove(stack.size() - 1).close();
-		current = stack.size() == 0 ? null : stack.get(0);
+		current = stack.size() == 0 ? null : stack.get(stack.size() - 1);
 		return this;
 	}
 

@@ -18,6 +18,8 @@
 
 package com.esotericsoftware.jsonbeans;
 
+import java.io.File;
+import java.io.FileReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -65,6 +67,14 @@ public class JsonReader {
 			return parse(new InputStreamReader(input, "ISO-8859-1"));
 		} catch (IOException ex) {
 			throw new JsonException(ex);
+		}
+	}
+
+	public Object parse (File file) {
+		try {
+			return parse(new FileReader(file));
+		} catch (Exception ex) {
+			throw new JsonException("Error parsing file: " + file, ex);
 		}
 	}
 
@@ -201,7 +211,7 @@ public class JsonReader {
 				if (data[i] == '\n') lineNumber++;
 			throw new JsonException("Error parsing JSON on line " + lineNumber + " near: " + new String(data, p, pe - p), parseRuntimeEx);
 		} else if (elements.size() != 0) {
-			Object element = elements.get(0);
+			Object element = elements.get(elements.size() - 1);
 			elements.clear();
 			if (element instanceof OrderedMap)
 				throw new JsonException("Error parsing JSON, unmatched brace.");
@@ -243,7 +253,7 @@ public class JsonReader {
 
 	protected void pop () {
 		root = elements.remove(elements.size() - 1);;
-		current = elements.size() > 0 ? elements.get(0) : null;
+		current = elements.size() > 0 ? elements.get(elements.size() - 1) : null;
 	}
 
 	protected void string (String name, String value) {
