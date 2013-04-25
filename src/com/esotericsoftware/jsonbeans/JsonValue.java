@@ -132,7 +132,7 @@ public class JsonValue {
 	public String asString () {
 		if (stringValue != null) return stringValue;
 		if (doubleValue != null) {
-			if (doubleValue % 1 == 0) return Long.toString(longValue);
+			if (doubleValue == longValue) return Long.toString(longValue);
 			return Double.toString(doubleValue);
 		}
 		if (booleanValue != null) return Boolean.toString(booleanValue);
@@ -543,8 +543,8 @@ public class JsonValue {
 			buffer.append(outputType.quoteValue(object.asString()));
 		} else if (object.isDouble()) {
 			double doubleValue = object.asDouble();
-			long longValue = (int)doubleValue;
-			buffer.append(doubleValue - longValue == 0 ? longValue : object);
+			long longValue = object.asLong();
+			buffer.append(doubleValue == longValue ? longValue : doubleValue);
 		} else if (object.isLong()) {
 			buffer.append(object.asLong());
 		} else if (object.isBoolean()) {
