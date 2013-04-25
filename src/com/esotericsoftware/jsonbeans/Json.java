@@ -17,6 +17,7 @@
 package com.esotericsoftware.jsonbeans;
 
 import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
+import com.esotericsoftware.jsonbeans.ObjectMap.Values;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -35,9 +36,11 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
-/** Reads/writes Java objects to/from JSON, automatically.
+/** Reads/writes Java objects to/from JSON, automatically. See the documentation for usage:
+ * https://code.google.com/p/jsonbeans/
  * @author Nathan Sweet */
 public class Json {
 	private static final boolean debug = false;
@@ -54,7 +57,7 @@ public class Json {
 	private boolean ignoreUnknownFields;
 
 	public Json () {
-		outputType = OutputType.json;
+		outputType = OutputType.minimal;
 	}
 
 	public Json (OutputType outputType) {
@@ -155,6 +158,8 @@ public class Json {
 		return toJson(object, knownType, (Class)null);
 	}
 
+	/** @param knownType May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown. */
 	public String toJson (Object object, Class knownType, Class elementType) {
 		StringWriter buffer = new StringWriter();
 		toJson(object, knownType, elementType, buffer);
@@ -165,10 +170,13 @@ public class Json {
 		toJson(object, object == null ? null : object.getClass(), null, file);
 	}
 
+	/** @param knownType May be null if the type is unknown. */
 	public void toJson (Object object, Class knownType, File file) {
 		toJson(object, knownType, null, file);
 	}
 
+	/** @param knownType May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown. */
 	public void toJson (Object object, Class knownType, Class elementType, File file) {
 		Writer writer = null;
 		try {
@@ -188,21 +196,35 @@ public class Json {
 		toJson(object, object == null ? null : object.getClass(), null, writer);
 	}
 
+	/** @param knownType May be null if the type is unknown. */
 	public void toJson (Object object, Class knownType, Writer writer) {
 		toJson(object, knownType, null, writer);
 	}
 
+	/** @param knownType May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown. */
 	public void toJson (Object object, Class knownType, Class elementType, Writer writer) {
-		if (!(writer instanceof JsonWriter)) {
-			writer = new JsonWriter(writer);
-		}
-		((JsonWriter)writer).setOutputType(outputType);
-		this.writer = (JsonWriter)writer;
+		setWriter(writer);
 		try {
 			writeValue(object, knownType, elementType);
 		} finally {
+			try {
+				this.writer.close();
+			} catch (Exception ignored) {
+			}
 			this.writer = null;
 		}
+	}
+
+	/** Sets the writer where JSON output will go. This is only necessary when not using the toJson methods. */
+	public void setWriter (Writer writer) {
+		if (!(writer instanceof JsonWriter)) writer = new JsonWriter(writer);
+		this.writer = (JsonWriter)writer;
+		this.writer.setOutputType(outputType);
+	}
+
+	public JsonWriter getWriter () {
+		return writer;
 	}
 
 	public void writeFields (Object object) {
@@ -213,7 +235,7 @@ public class Json {
 		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		int i = 0;
-		for (FieldMetadata metadata : fields.values()) {
+		for (FieldMetadata metadata : new Values<FieldMetadata>(fields)) {
 			Field field = metadata.field;
 			try {
 				Object value = field.get(object);
@@ -280,6 +302,7 @@ public class Json {
 		writeField(object, name, name, null);
 	}
 
+	/** @param elementType May be null if the type is unknown. */
 	public void writeField (Object object, String name, Class elementType) {
 		writeField(object, name, name, elementType);
 	}
@@ -288,6 +311,7 @@ public class Json {
 		writeField(object, fieldName, jsonName, null);
 	}
 
+	/** @param elementType May be null if the type is unknown. */
 	public void writeField (Object object, String fieldName, String jsonName, Class elementType) {
 		Class type = object.getClass();
 		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
@@ -312,15 +336,21 @@ public class Json {
 		}
 	}
 
+	/** @param value May be null. */
 	public void writeValue (String name, Object value) {
 		try {
 			writer.name(name);
 		} catch (IOException ex) {
 			throw new JsonException(ex);
 		}
-		writeValue(value, value.getClass(), null);
+		if (value == null)
+			writeValue(value, null, null);
+		else
+			writeValue(value, value.getClass(), null);
 	}
 
+	/** @param value May be null.
+	 * @param knownType May be null if the type is unknown. */
 	public void writeValue (String name, Object value, Class knownType) {
 		try {
 			writer.name(name);
@@ -330,6 +360,9 @@ public class Json {
 		writeValue(value, knownType, null);
 	}
 
+	/** @param value May be null.
+	 * @param knownType May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown. */
 	public void writeValue (String name, Object value, Class knownType, Class elementType) {
 		try {
 			writer.name(name);
@@ -339,18 +372,34 @@ public class Json {
 		writeValue(value, knownType, elementType);
 	}
 
+	/** @param value May be null. */
 	public void writeValue (Object value) {
-		writeValue(value, value.getClass(), null);
+		if (value == null)
+			writeValue(value, null, null);
+		else
+			writeValue(value, value.getClass(), null);
 	}
 
+	/** @param value May be null.
+	 * @param knownType May be null if the type is unknown. */
 	public void writeValue (Object value, Class knownType) {
 		writeValue(value, knownType, null);
 	}
 
+	/** @param value May be null.
+	 * @param knownType May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown. */
 	public void writeValue (Object value, Class knownType, Class elementType) {
 		try {
 			if (value == null) {
 				writer.value(null);
+				return;
+			}
+
+			if ((knownType != null && knownType.isPrimitive()) || knownType == String.class || knownType == Integer.class
+				|| knownType == Boolean.class || knownType == Float.class || knownType == Long.class || knownType == Double.class
+				|| knownType == Short.class || knownType == Byte.class || knownType == Character.class) {
+				writer.value(value);
 				return;
 			}
 
@@ -359,7 +408,9 @@ public class Json {
 			if (actualType.isPrimitive() || actualType == String.class || actualType == Integer.class || actualType == Boolean.class
 				|| actualType == Float.class || actualType == Long.class || actualType == Double.class || actualType == Short.class
 				|| actualType == Byte.class || actualType == Character.class) {
-				writer.value(value);
+				writeObjectStart(actualType, null);
+				writeValue("value", value);
+				writeObjectEnd();
 				return;
 			}
 
@@ -373,18 +424,6 @@ public class Json {
 			Serializer serializer = classToSerializer.get(actualType);
 			if (serializer != null) {
 				serializer.write(this, value, knownType);
-				return;
-			}
-
-			if (value instanceof ArrayList) {
-				if (knownType != null && actualType != knownType)
-					throw new JsonException("Serialization of an Array other than the known type is not supported.\n" + "Known type: "
-						+ knownType + "\nActual type: " + actualType);
-				writeArrayStart();
-				ArrayList array = (ArrayList)value;
-				for (int i = 0, n = array.size(); i < n; i++)
-					writeValue(array.get(i), elementType, null);
-				writeArrayEnd();
 				return;
 			}
 
@@ -409,20 +448,8 @@ public class Json {
 				return;
 			}
 
-			if (value instanceof OrderedMap) {
-				if (knownType == null) knownType = OrderedMap.class;
-				writeObjectStart(actualType, knownType);
-				OrderedMap map = (OrderedMap)value;
-				for (Object key : map.orderedKeys()) {
-					writer.name(convertToString(key));
-					writeValue(map.get(key), elementType, null);
-				}
-				writeObjectEnd();
-				return;
-			}
-
 			if (value instanceof ObjectMap) {
-				if (knownType == null) knownType = OrderedMap.class;
+				if (knownType == null) knownType = ObjectMap.class;
 				writeObjectStart(actualType, knownType);
 				for (Entry entry : ((ObjectMap<?, ?>)value).entries()) {
 					writer.name(convertToString(entry.key));
@@ -433,7 +460,7 @@ public class Json {
 			}
 
 			if (value instanceof Map) {
-				if (knownType == null) knownType = OrderedMap.class;
+				if (knownType == null) knownType = HashMap.class;
 				writeObjectStart(actualType, knownType);
 				for (Map.Entry entry : ((Map<?, ?>)value).entrySet()) {
 					writer.name(convertToString(entry.getKey()));
@@ -443,7 +470,7 @@ public class Json {
 				return;
 			}
 
-			if (actualType.isEnum()) {
+			if (Enum.class.isAssignableFrom(actualType)) {
 				writer.value(value);
 				return;
 			}
@@ -465,6 +492,7 @@ public class Json {
 		writeObjectStart();
 	}
 
+	/** @param knownType May be null if the type is unknown. */
 	public void writeObjectStart (String name, Class actualType, Class knownType) {
 		try {
 			writer.name(name);
@@ -482,6 +510,7 @@ public class Json {
 		}
 	}
 
+	/** @param knownType May be null if the type is unknown. */
 	public void writeObjectStart (Class actualType, Class knownType) {
 		try {
 			writer.object();
@@ -536,22 +565,34 @@ public class Json {
 		if (debug) System.out.println("Writing type: " + type.getName());
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, Reader reader) {
 		return (T)readValue(type, null, new JsonReader().parse(reader));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, Class elementType, Reader reader) {
 		return (T)readValue(type, elementType, new JsonReader().parse(reader));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, InputStream input) {
 		return (T)readValue(type, null, new JsonReader().parse(input));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, Class elementType, InputStream input) {
 		return (T)readValue(type, elementType, new JsonReader().parse(input));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, File file) {
 		try {
 			return (T)readValue(type, null, new JsonReader().parse(file));
@@ -560,6 +601,9 @@ public class Json {
 		}
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, Class elementType, File file) {
 		try {
 			return (T)readValue(type, elementType, new JsonReader().parse(file));
@@ -568,43 +612,52 @@ public class Json {
 		}
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, char[] data, int offset, int length) {
 		return (T)readValue(type, null, new JsonReader().parse(data, offset, length));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, Class elementType, char[] data, int offset, int length) {
 		return (T)readValue(type, elementType, new JsonReader().parse(data, offset, length));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, String json) {
 		return (T)readValue(type, null, new JsonReader().parse(json));
 	}
 
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
 	public <T> T fromJson (Class<T> type, Class elementType, String json) {
 		return (T)readValue(type, elementType, new JsonReader().parse(json));
 	}
 
-	public void readField (Object object, String name, Object jsonData) {
+	public void readField (Object object, String name, JsonValue jsonData) {
 		readField(object, name, name, null, jsonData);
 	}
 
-	public void readField (Object object, String name, Class elementType, Object jsonData) {
+	public void readField (Object object, String name, Class elementType, JsonValue jsonData) {
 		readField(object, name, name, elementType, jsonData);
 	}
 
-	public void readField (Object object, String fieldName, String jsonName, Object jsonData) {
+	public void readField (Object object, String fieldName, String jsonName, JsonValue jsonData) {
 		readField(object, fieldName, jsonName, null, jsonData);
 	}
 
-	public void readField (Object object, String fieldName, String jsonName, Class elementType, Object jsonData) {
-		OrderedMap jsonMap = (OrderedMap)jsonData;
+	/** @param elementType May be null if the type is unknown. */
+	public void readField (Object object, String fieldName, String jsonName, Class elementType, JsonValue jsonMap) {
 		Class type = object.getClass();
 		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
 		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		Field field = metadata.field;
-		Object jsonValue = jsonMap.get(jsonName);
+		JsonValue jsonValue = jsonMap.get(jsonName);
 		if (jsonValue == null) return;
 		if (elementType == null) elementType = metadata.elementType;
 		try {
@@ -621,24 +674,23 @@ public class Json {
 		}
 	}
 
-	public void readFields (Object object, Object jsonData) {
-		OrderedMap<String, Object> jsonMap = (OrderedMap)jsonData;
+	public void readFields (Object object, JsonValue jsonMap) {
 		Class type = object.getClass();
 		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
 		if (fields == null) fields = cacheFields(type);
-		for (Entry<String, Object> entry : jsonMap.entries()) {
-			FieldMetadata metadata = fields.get(entry.key);
+		for (JsonValue child = jsonMap.child(); child != null; child = child.next()) {
+			FieldMetadata metadata = fields.get(child.name());
 			if (metadata == null) {
 				if (ignoreUnknownFields) {
-					if (debug) System.out.println("Ignoring unknown field: " + entry.key + " (" + type.getName() + ")");
+					if (debug) System.out.println("Ignoring unknown field: " + child.name() + " (" + type.getName() + ")");
 					continue;
 				} else
-					throw new JsonException("Field not found: " + entry.key + " (" + type.getName() + ")");
+					throw new JsonException("Field not found: " + child.name() + " (" + type.getName() + ")");
 			}
 			Field field = metadata.field;
-			if (entry.value == null) continue;
+			// if (entry.value == null) continue; // I don't remember what this did. :(
 			try {
-				field.set(object, readValue(field.getType(), metadata.elementType, entry.value));
+				field.set(object, readValue(field.getType(), metadata.elementType, child));
 			} catch (IllegalAccessException ex) {
 				throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
 			} catch (JsonException ex) {
@@ -652,46 +704,59 @@ public class Json {
 		}
 	}
 
-	public <T> T readValue (String name, Class<T> type, Object jsonData) {
-		OrderedMap jsonMap = (OrderedMap)jsonData;
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (String name, Class<T> type, JsonValue jsonMap) {
 		return (T)readValue(type, null, jsonMap.get(name));
 	}
 
-	public <T> T readValue (String name, Class<T> type, T defaultValue, Object jsonData) {
-		OrderedMap jsonMap = (OrderedMap)jsonData;
-		Object jsonValue = jsonMap.get(name);
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (String name, Class<T> type, T defaultValue, JsonValue jsonMap) {
+		JsonValue jsonValue = jsonMap.get(name);
 		if (jsonValue == null) return defaultValue;
 		return (T)readValue(type, null, jsonValue);
 	}
 
-	public <T> T readValue (String name, Class<T> type, Class elementType, Object jsonData) {
-		OrderedMap jsonMap = (OrderedMap)jsonData;
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (String name, Class<T> type, Class elementType, JsonValue jsonMap) {
 		return (T)readValue(type, elementType, jsonMap.get(name));
 	}
 
-	public <T> T readValue (String name, Class<T> type, Class elementType, T defaultValue, Object jsonData) {
-		OrderedMap jsonMap = (OrderedMap)jsonData;
-		Object jsonValue = jsonMap.get(name);
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (String name, Class<T> type, Class elementType, T defaultValue, JsonValue jsonMap) {
+		JsonValue jsonValue = jsonMap.get(name);
 		if (jsonValue == null) return defaultValue;
 		return (T)readValue(type, elementType, jsonValue);
 	}
 
-	public <T> T readValue (Class<T> type, Class elementType, T defaultValue, Object jsonData) {
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (Class<T> type, Class elementType, T defaultValue, JsonValue jsonData) {
 		return (T)readValue(type, elementType, jsonData);
 	}
 
-	public <T> T readValue (Class<T> type, Object jsonData) {
+	/** @param type May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (Class<T> type, JsonValue jsonData) {
 		return (T)readValue(type, null, jsonData);
 	}
 
-	public <T> T readValue (Class<T> type, Class elementType, Object jsonData) {
+	/** @param type May be null if the type is unknown.
+	 * @param elementType May be null if the type is unknown.
+	 * @return May be null. */
+	public <T> T readValue (Class<T> type, Class elementType, JsonValue jsonData) {
 		if (jsonData == null) return null;
 
-		if (jsonData instanceof OrderedMap) {
-			OrderedMap<String, Object> jsonMap = (OrderedMap)jsonData;
-
-			String className = typeName == null ? null : (String)jsonMap.remove(typeName);
+		if (jsonData.isObject()) {
+			String className = typeName == null ? null : jsonData.getString(typeName, null);
 			if (className != null) {
+				jsonData.remove(typeName);
 				try {
 					type = (Class<T>)Class.forName(className);
 				} catch (ClassNotFoundException ex) {
@@ -700,35 +765,40 @@ public class Json {
 				}
 			}
 
+			if (type == String.class || type == Integer.class || type == Boolean.class || type == Float.class || type == Long.class
+				|| type == Double.class || type == Short.class || type == Byte.class || type == Character.class) {
+				return readValue("value", type, jsonData);
+			}
+
 			Object object;
 			if (type != null) {
 				Serializer serializer = classToSerializer.get(type);
-				if (serializer != null) return (T)serializer.read(this, jsonMap, type);
+				if (serializer != null) return (T)serializer.read(this, jsonData, type);
 
 				object = newInstance(type);
 
 				if (object instanceof Serializable) {
-					((Serializable)object).read(this, jsonMap);
+					((Serializable)object).read(this, jsonData);
 					return (T)object;
 				}
 
 				if (object instanceof HashMap) {
 					HashMap result = (HashMap)object;
-					for (Entry entry : jsonMap.entries())
-						result.put(entry.key, readValue(elementType, null, entry.value));
+					for (JsonValue child = jsonData.child(); child != null; child = child.next())
+						result.put(child.name(), readValue(elementType, null, child));
 					return (T)result;
 				}
 			} else
-				object = new OrderedMap();
+				return (T)jsonData;
 
 			if (object instanceof ObjectMap) {
 				ObjectMap result = (ObjectMap)object;
-				for (String key : jsonMap.orderedKeys())
-					result.put(key, readValue(elementType, null, jsonMap.get(key)));
+				for (JsonValue child = jsonData.child(); child != null; child = child.next())
+					result.put(child.name(), readValue(elementType, null, child));
 				return (T)result;
 			}
 
-			readFields(object, jsonMap);
+			readFields(object, jsonData);
 			return (T)object;
 		}
 
@@ -737,50 +807,50 @@ public class Json {
 			if (serializer != null) return (T)serializer.read(this, jsonData, type);
 		}
 
-		if (jsonData instanceof ArrayList) {
-			ArrayList array = (ArrayList)jsonData;
-			if (type == null || ArrayList.class.isAssignableFrom(type)) {
-				ArrayList newArray = new ArrayList(array.size());
-				for (int i = 0, n = array.size(); i < n; i++)
-					newArray.add(readValue(elementType, null, array.get(i)));
-				return (T)newArray;
-			}
-			if (ArrayList.class.isAssignableFrom(type)) {
-				ArrayList newArray = new ArrayList(array.size());
-				for (int i = 0, n = array.size(); i < n; i++)
-					newArray.add(readValue(elementType, null, array.get(i)));
+		if (jsonData.isArray()) {
+			if (List.class.isAssignableFrom(type)) {
+				List newArray = type == null ? new ArrayList() : (List)newInstance(type);
+				for (JsonValue child = jsonData.child(); child != null; child = child.next())
+					newArray.add(readValue(elementType, null, child));
 				return (T)newArray;
 			}
 			if (type.isArray()) {
 				Class componentType = type.getComponentType();
 				if (elementType == null) elementType = componentType;
-				Object newArray = java.lang.reflect.Array.newInstance(componentType, array.size());
-				for (int i = 0, n = array.size(); i < n; i++)
-					java.lang.reflect.Array.set(newArray, i, readValue(elementType, null, array.get(i)));
+				Object newArray = java.lang.reflect.Array.newInstance(componentType, jsonData.size());
+				int i = 0;
+				for (JsonValue child = jsonData.child(); child != null; child = child.next())
+					java.lang.reflect.Array.set(newArray, i++, readValue(elementType, null, child));
 				return (T)newArray;
 			}
 			throw new JsonException("Unable to convert value to required type: " + jsonData + " (" + type.getName() + ")");
 		}
 
-		if (jsonData instanceof Float) {
-			Float floatValue = (Float)jsonData;
+		if (jsonData.isNumber()) {
 			try {
-				if (type == null || type == float.class || type == Float.class) return (T)(Float)floatValue;
-				if (type == int.class || type == Integer.class) return (T)(Integer)floatValue.intValue();
-				if (type == long.class || type == Long.class) return (T)(Long)floatValue.longValue();
-				if (type == double.class || type == Double.class) return (T)(Double)floatValue.doubleValue();
-				if (type == short.class || type == Short.class) return (T)(Short)floatValue.shortValue();
-				if (type == byte.class || type == Byte.class) return (T)(Byte)floatValue.byteValue();
+				if (type == null || type == float.class || type == Float.class) return (T)(Float)jsonData.asFloat();
+				if (type == int.class || type == Integer.class) return (T)(Integer)jsonData.asInt();
+				if (type == long.class || type == Long.class) return (T)(Long)jsonData.asLong();
+				if (type == double.class || type == Double.class) return (T)(Double)(double)jsonData.asFloat();
+				if (type == String.class) return (T)Float.toString(jsonData.asFloat());
+				if (type == short.class || type == Short.class) return (T)(Short)(short)jsonData.asInt();
+				if (type == byte.class || type == Byte.class) return (T)(Byte)(byte)jsonData.asInt();
 			} catch (NumberFormatException ignored) {
 			}
-			jsonData = String.valueOf(jsonData);
+			jsonData = new JsonValue(jsonData.asString());
 		}
 
-		if (jsonData instanceof Boolean) jsonData = String.valueOf(jsonData);
+		if (jsonData.isBoolean()) {
+			try {
+				if (type == null || type == boolean.class || type == Boolean.class) return (T)(Boolean)jsonData.asBoolean();
+			} catch (NumberFormatException ignored) {
+			}
+			jsonData = new JsonValue(jsonData.asString());
+		}
 
-		if (jsonData instanceof String) {
-			String string = (String)jsonData;
-			if (type == null || type == String.class) return (T)jsonData;
+		if (jsonData.isString()) {
+			String string = jsonData.asString();
+			if (type == null || type == String.class) return (T)string;
 			try {
 				if (type == int.class || type == Integer.class) return (T)Integer.valueOf(string);
 				if (type == float.class || type == Float.class) return (T)Float.valueOf(string);
@@ -792,7 +862,7 @@ public class Json {
 			}
 			if (type == boolean.class || type == Boolean.class) return (T)Boolean.valueOf(string);
 			if (type == char.class || type == Character.class) return (T)(Character)string.charAt(0);
-			if (type.isEnum()) {
+			if (Enum.class.isAssignableFrom(type)) {
 				Object[] constants = type.getEnumConstants();
 				for (int i = 0, n = constants.length; i < n; i++)
 					if (string.equals(constants[i].toString())) return (T)constants[i];
@@ -846,101 +916,7 @@ public class Json {
 	}
 
 	public String prettyPrint (String json, int singleLineColumns) {
-		StringBuilder buffer = new StringBuilder(512);
-		prettyPrint(new JsonReader().parse(json), buffer, 0, singleLineColumns);
-		return buffer.toString();
-	}
-
-	private void prettyPrint (Object object, StringBuilder buffer, int indent, int singleLineColumns) {
-		if (object instanceof OrderedMap) {
-			OrderedMap<String, ?> map = (OrderedMap)object;
-			if (map.size == 0) {
-				buffer.append("{}");
-			} else {
-				boolean newLines = !isFlat(map);
-				int start = buffer.length();
-				outer:
-				while (true) {
-					buffer.append(newLines ? "{\n" : "{ ");
-					int i = 0;
-					for (String key : map.orderedKeys()) {
-						if (newLines) indent(indent, buffer);
-						buffer.append(outputType.quoteName(key));
-						buffer.append(": ");
-						prettyPrint(map.get(key), buffer, indent + 1, singleLineColumns);
-						if (i++ < map.size - 1) buffer.append(",");
-						buffer.append(newLines ? '\n' : ' ');
-						if (!newLines && buffer.length() - start > singleLineColumns) {
-							buffer.setLength(start);
-							newLines = true;
-							continue outer;
-						}
-					}
-					break;
-				}
-				if (newLines) indent(indent - 1, buffer);
-				buffer.append('}');
-			}
-		} else if (object instanceof ArrayList) {
-			ArrayList array = (ArrayList)object;
-			if (array.size() == 0) {
-				buffer.append("[]");
-			} else {
-				boolean newLines = !isFlat(array);
-				int start = buffer.length();
-				outer:
-				while (true) {
-					buffer.append(newLines ? "[\n" : "[ ");
-					for (int i = 0, n = array.size(); i < n; i++) {
-						if (newLines) indent(indent, buffer);
-						prettyPrint(array.get(i), buffer, indent + 1, singleLineColumns);
-						if (i < array.size() - 1) buffer.append(",");
-						buffer.append(newLines ? '\n' : ' ');
-						if (!newLines && buffer.length() - start > singleLineColumns) {
-							buffer.setLength(start);
-							newLines = true;
-							continue outer;
-						}
-					}
-					break;
-				}
-				if (newLines) indent(indent - 1, buffer);
-				buffer.append(']');
-			}
-		} else if (object instanceof String) {
-			buffer.append(outputType.quoteValue((String)object));
-		} else if (object instanceof Float) {
-			Float floatValue = (Float)object;
-			int intValue = floatValue.intValue();
-			buffer.append(floatValue - intValue == 0 ? intValue : object);
-		} else if (object instanceof Boolean) {
-			buffer.append(object);
-		} else if (object == null) {
-			buffer.append("null");
-		} else
-			throw new JsonException("Unknown object type: " + object.getClass());
-	}
-
-	static private boolean isFlat (ObjectMap<?, ?> map) {
-		for (Entry entry : map.entries()) {
-			if (entry.value instanceof ObjectMap) return false;
-			if (entry.value instanceof ArrayList) return false;
-		}
-		return true;
-	}
-
-	static private boolean isFlat (ArrayList array) {
-		for (int i = 0, n = array.size(); i < n; i++) {
-			Object value = array.get(i);
-			if (value instanceof ObjectMap) return false;
-			if (value instanceof ArrayList) return false;
-		}
-		return true;
-	}
-
-	static private void indent (int count, StringBuilder buffer) {
-		for (int i = 0; i < count; i++)
-			buffer.append('\t');
+		return new JsonReader().parse(json).prettyPrint(outputType, singleLineColumns);
 	}
 
 	static private class FieldMetadata {
@@ -967,19 +943,19 @@ public class Json {
 	static public interface Serializer<T> {
 		public void write (Json json, T object, Class knownType);
 
-		public T read (Json json, Object jsonData, Class type);
+		public T read (Json json, JsonValue jsonData, Class type);
 	}
 
 	static abstract public class ReadOnlySerializer<T> implements Serializer<T> {
 		public void write (Json json, T object, Class knownType) {
 		}
 
-		abstract public T read (Json json, Object jsonData, Class type);
+		abstract public T read (Json json, JsonValue jsonData, Class type);
 	}
 
 	static public interface Serializable {
 		public void write (Json json);
 
-		public void read (Json json, OrderedMap<String, Object> jsonData);
+		public void read (Json json, JsonValue jsonData);
 	}
 }

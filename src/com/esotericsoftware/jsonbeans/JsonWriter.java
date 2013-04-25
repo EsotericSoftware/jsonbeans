@@ -19,11 +19,12 @@ package com.esotericsoftware.jsonbeans;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
+import java.util.regex.Pattern;
 
 /** Builder style API for emitting JSON.
  * @author Nathan Sweet */
 public class JsonWriter extends Writer {
-	Writer writer;
+	final Writer writer;
 	private final ArrayList<JsonObject> stack = new ArrayList();
 	private JsonObject current;
 	private boolean named;
@@ -31,6 +32,10 @@ public class JsonWriter extends Writer {
 
 	public JsonWriter (Writer writer) {
 		this.writer = writer;
+	}
+
+	public Writer getWriter () {
+		return writer;
 	}
 
 	public void setOutputType (OutputType outputType) {
@@ -82,6 +87,10 @@ public class JsonWriter extends Writer {
 	}
 
 	public JsonWriter value (Object value) throws IOException {
+		if (value instanceof Number) {
+			Number number = (Number)value;
+			if (number.doubleValue() % 1 == 0) value = number.longValue();
+		}
 		if (current != null) {
 			if (current.array) {
 				if (!current.needsComma)
@@ -93,11 +102,7 @@ public class JsonWriter extends Writer {
 				named = false;
 			}
 		}
-		if (value == null || value instanceof Number || value instanceof Boolean) {
-			writer.write(String.valueOf(value));
-		} else {
-			writer.write(outputType.quoteValue(value.toString()));
-		}
+		writer.write(outputType.quoteValue(value));
 		return this;
 	}
 
@@ -116,7 +121,7 @@ public class JsonWriter extends Writer {
 	public JsonWriter pop () throws IOException {
 		if (named) throw new IllegalStateException("Expected an object, array, or value since a name was set.");
 		stack.remove(stack.size() - 1).close();
-		current = stack.size() == 0 ? null : stack.get(stack.size() - 1);
+		current = stack.isEmpty() ? null : stack.get(stack.size() - 1);
 		return this;
 	}
 

@@ -15,11 +15,12 @@ public enum OutputType {
 	static private Pattern minimalValuePattern = Pattern.compile("[a-zA-Z_$][^:}\\], ]*");
 	static private Pattern minimalNamePattern = Pattern.compile("[a-zA-Z0-9_$][^:}\\], ]*");
 
-	public String quoteValue (String value) {
-		value = value.replace("\\", "\\\\");
-		if (this == OutputType.minimal && !value.equals("true") && !value.equals("false") && !value.equals("null")
-			&& minimalValuePattern.matcher(value).matches()) return value;
-		return '"' + value.replace("\"", "\\\"") + '"';
+	public String quoteValue (Object value) {
+		if (value == null || value instanceof Number || value instanceof Boolean) return String.valueOf(value);
+		String string = String.valueOf(value).replace("\\", "\\\\");
+		if (this == OutputType.minimal && !string.equals("true") && !string.equals("false") && !string.equals("null")
+			&& minimalValuePattern.matcher(string).matches()) return string;
+		return '"' + string.replace("\"", "\\\"") + '"';
 	}
 
 	public String quoteName (String value) {
