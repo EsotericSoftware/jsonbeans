@@ -3,10 +3,10 @@
 Please use the [JsonBeans discussion group](http://groups.google.com/group/jsonbeans-users) for support.
 
 - [Overview](#Overview)
-- [Writing object graphs](#Writing_object_graphs)
-- [Reading object graphs](#Reading_object_graphs)
-- [Customizing serialization](#Customizing_serialization)
-- [Event based parsing](#Event_based_parsing)
+- [Writing object graphs](#writing-object-graphs)
+- [Reading object graphs](#reading-object-graphs)
+- [Customizing serialization](#customizing-serialization)
+- [Event based parsing](#event-based-parsing)
 
 ## Overview
 
