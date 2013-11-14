@@ -12,9 +12,9 @@
     <version>0.7-SNAPHOT</version>
     <packaging>jar</packaging>
 
-    <name>MinLog</name>
-    <description>Minimal overhead Java logging</description>
-    <url>http://code.google.com/p/minlog/</url>
+    <name>jsonbeans</name>
+    <description>Java object graphs, to and from JSON automatically</description>
+    <url>https://github.com/EsotericSoftware/jsonbeans</url>
 
     <licenses>
         <license>
