@@ -67,15 +67,20 @@ public class JsonReader {
 
 	public JsonValue parse (InputStream input) {
 		try {
-			return parse(new InputStreamReader(input, "ISO-8859-1"));
+			return parse(new InputStreamReader(input, "UTF-8"));
 		} catch (IOException ex) {
 			throw new JsonException(ex);
+		} finally {
+			try {
+				input.close();
+			} catch (IOException ignored) {
+			}
 		}
 	}
 
 	public JsonValue parse (File file) {
 		try {
-			return parse(new FileInputStream(file));
+			return parse(new InputStreamReader(new FileInputStream(file), "UTF-8"));
 		} catch (Exception ex) {
 			throw new JsonException("Error parsing file: " + file, ex);
 		}
@@ -426,22 +431,27 @@ public class JsonReader {
 			parseRuntimeEx = ex;
 		}
 
+		JsonValue root = this.root;
+		this.root = null;
+		current = null;
+		lastChild.clear();
+
 		if (p < pe) {
 			int lineNumber = 1;
 			for (int i = 0; i < p; i++)
 				if (data[i] == '\n') lineNumber++;
 			throw new JsonException("Error parsing JSON on line " + lineNumber + " near: " + new String(data, p, pe - p),
 				parseRuntimeEx);
-		} else if (!elements.isEmpty()) {
-			JsonValue element = elements.get(elements.size() - 1);
+		} else if (elements.size() != 0) {
+			JsonValue element = elements.get(0);
 			elements.clear();
 			if (element != null && element.isObject())
 				throw new JsonException("Error parsing JSON, unmatched brace.");
 			else
 				throw new JsonException("Error parsing JSON, unmatched bracket.");
+		} else if (parseRuntimeEx != null) {
+			throw new JsonException("Error parsing JSON: " + new String(data), parseRuntimeEx);
 		}
-		JsonValue root = this.root;
-		this.root = null;
 		return root;
 	}
 
@@ -579,13 +589,25 @@ public class JsonReader {
 	// line 236 "JsonReader.rl"
 
 	private final ArrayList<JsonValue> elements = new ArrayList(8);
+	private final ArrayList<JsonValue> lastChild = new ArrayList(8);
 	private JsonValue root, current;
 
 	private void addChild (String name, JsonValue child) {
 		child.setName(name);
-		if (current.isArray() || current.isObject())
-			current.addChild(child);
-		else
+		if (current == null) {
+			current = child;
+			root = child;
+		} else if (current.isArray() || current.isObject()) {
+			if (current.size == 0)
+				current.child = child;
+			else {
+				JsonValue last = lastChild.remove(lastChild.size() - 1);
+				last.next = child;
+				child.prev = last;
+			}
+			lastChild.add(child);
+			current.size++;
+		} else
 			root = current;
 	}
 
@@ -605,7 +627,8 @@ public class JsonReader {
 
 	protected void pop () {
 		root = elements.remove(elements.size() - 1);
-		current = !elements.isEmpty() ? elements.get(elements.size() - 1) : null;
+		if (current.size > 0) lastChild.remove(lastChild.size() - 1);
+		current = elements.size() > 0 ? elements.get(0) : null;
 	}
 
 	protected void string (String name, String value) {

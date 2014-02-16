@@ -33,6 +33,8 @@ public class ObjectMap<K, V> {
 	private static final int PRIME2 = 0xb4b82e39;
 	private static final int PRIME3 = 0xced1c241;
 
+	static Random random = new Random();
+
 	public int size;
 
 	K[] keyTable;
@@ -43,10 +45,6 @@ public class ObjectMap<K, V> {
 	private int hashShift, mask, threshold;
 	private int stashCapacity;
 	private int pushIterations;
-
-	private Entries entries;
-	private Values values;
-	private Keys keys;
 
 	/** Creates a new map with an initial capacity of 32 and a load factor of 0.8. This map will hold 25 items before growing the
 	 * backing table. */
@@ -64,7 +62,7 @@ public class ObjectMap<K, V> {
 	 * before growing the backing table. */
 	public ObjectMap (int initialCapacity, float loadFactor) {
 		if (initialCapacity < 0) throw new IllegalArgumentException("initialCapacity must be >= 0: " + initialCapacity);
-		if (capacity > 1 << 30) throw new IllegalArgumentException("initialCapacity is too large: " + initialCapacity);
+		if (initialCapacity > 1 << 30) throw new IllegalArgumentException("initialCapacity is too large: " + initialCapacity);
 		capacity = nextPowerOfTwo(initialCapacity);
 
 		if (loadFactor <= 0) throw new IllegalArgumentException("loadFactor must be > 0: " + loadFactor);
@@ -78,6 +76,15 @@ public class ObjectMap<K, V> {
 
 		keyTable = (K[])new Object[capacity + stashCapacity];
 		valueTable = (V[])new Object[keyTable.length];
+	}
+
+	/** Creates a new map identical to the specified map. */
+	public ObjectMap (ObjectMap<? extends K, ? extends V> map) {
+		this(map.capacity, map.loadFactor);
+		stashSize = map.stashSize;
+		System.arraycopy(map.keyTable, 0, keyTable, 0, map.keyTable.length);
+		System.arraycopy(map.valueTable, 0, valueTable, 0, map.valueTable.length);
+		size = map.size;
 	}
 
 	/** Returns the old value associated with the specified key, or null. */
@@ -151,6 +158,7 @@ public class ObjectMap<K, V> {
 	}
 
 	public void putAll (ObjectMap<K, V> map) {
+		ensureCapacity(map.size);
 		for (Entry<K, V> entry : map.entries())
 			put(entry.key, entry.value);
 	}
@@ -294,6 +302,27 @@ public class ObjectMap<K, V> {
 		return null;
 	}
 
+	/** Returns the value for the specified key, or the default value if the key is not in the map. */
+	public V get (K key, V defaultValue) {
+		int hashCode = key.hashCode();
+		int index = hashCode & mask;
+		if (!key.equals(keyTable[index])) {
+			index = hash2(hashCode);
+			if (!key.equals(keyTable[index])) {
+				index = hash3(hashCode);
+				if (!key.equals(keyTable[index])) return getStash(key, defaultValue);
+			}
+		}
+		return valueTable[index];
+	}
+
+	private V getStash (K key, V defaultValue) {
+		K[] keyTable = this.keyTable;
+		for (int i = capacity, n = i + stashSize; i < n; i++)
+			if (key.equals(keyTable[i])) return valueTable[i];
+		return defaultValue;
+	}
+
 	public V remove (K key) {
 		int hashCode = key.hashCode();
 		int index = hashCode & mask;
@@ -349,6 +378,26 @@ public class ObjectMap<K, V> {
 			valueTable[lastIndex] = null;
 		} else
 			valueTable[index] = null;
+	}
+
+	/** Reduces the size of the backing arrays to be the specified capacity or less. If the capacity is already less, nothing is
+	 * done. If the map contains more items than the specified capacity, the next highest power of two capacity is used instead. */
+	public void shrink (int maximumCapacity) {
+		if (maximumCapacity < 0) throw new IllegalArgumentException("maximumCapacity must be >= 0: " + maximumCapacity);
+		if (size > maximumCapacity) maximumCapacity = size;
+		if (capacity <= maximumCapacity) return;
+		maximumCapacity = nextPowerOfTwo(maximumCapacity);
+		resize(maximumCapacity);
+	}
+
+	/** Clears the map and reduces the size of the backing arrays to be the specified capacity if they are larger. */
+	public void clear (int maximumCapacity) {
+		if (capacity <= maximumCapacity) {
+			clear();
+			return;
+		}
+		size = 0;
+		resize(maximumCapacity);
 	}
 
 	public void clear () {
@@ -445,11 +494,14 @@ public class ObjectMap<K, V> {
 		keyTable = (K[])new Object[newSize + stashCapacity];
 		valueTable = (V[])new Object[newSize + stashCapacity];
 
+		int oldSize = size;
 		size = 0;
 		stashSize = 0;
-		for (int i = 0; i < oldEndIndex; i++) {
-			K key = oldKeyTable[i];
-			if (key != null) putResize(key, oldValueTable[i]);
+		if (oldSize > 0) {
+			for (int i = 0; i < oldEndIndex; i++) {
+				K key = oldKeyTable[i];
+				if (key != null) putResize(key, oldValueTable[i]);
+			}
 		}
 	}
 
@@ -490,34 +542,19 @@ public class ObjectMap<K, V> {
 		return buffer.toString();
 	}
 
-	/** Returns an iterator for the entries in the map. Remove is supported. Note that the same iterator instance is returned each
-	 * time this method is called. Use the {@link Entries} constructor for nested or multithreaded iteration. */
+	/** Returns an iterator for the entries in the map. Remove is supported. */
 	public Entries<K, V> entries () {
-		if (entries == null)
-			entries = new Entries(this);
-		else
-			entries.reset();
-		return entries;
+		return new Entries(this);
 	}
 
-	/** Returns an iterator for the values in the map. Remove is supported. Note that the same iterator instance is returned each
-	 * time this method is called. Use the {@link Entries} constructor for nested or multithreaded iteration. */
+	/** Returns an iterator for the values in the map. Remove is supported. */
 	public Values<V> values () {
-		if (values == null)
-			values = new Values(this);
-		else
-			values.reset();
-		return values;
+		return new Values(this);
 	}
 
-	/** Returns an iterator for the keys in the map. Remove is supported. Note that the same iterator instance is returned each time
-	 * this method is called. Use the {@link Entries} constructor for nested or multithreaded iteration. */
+	/** Returns an iterator for the keys in the map. Remove is supported. */
 	public Keys<K> keys () {
-		if (keys == null)
-			keys = new Keys(this);
-		else
-			keys.reset();
-		return keys;
+		return new Keys(this);
 	}
 
 	static public class Entry<K, V> {
@@ -561,6 +598,8 @@ public class ObjectMap<K, V> {
 			if (currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
 			if (currentIndex >= map.capacity) {
 				map.removeStashIndex(currentIndex);
+				nextIndex = currentIndex;
+				advance();
 			} else {
 				map.keyTable[currentIndex] = null;
 				map.valueTable[currentIndex] = null;
@@ -607,6 +646,7 @@ public class ObjectMap<K, V> {
 		}
 
 		public V next () {
+			if (!hasNext) throw new NoSuchElementException();
 			V value = map.valueTable[nextIndex];
 			currentIndex = nextIndex;
 			advance();
@@ -642,6 +682,7 @@ public class ObjectMap<K, V> {
 		}
 
 		public K next () {
+			if (!hasNext) throw new NoSuchElementException();
 			K key = map.keyTable[nextIndex];
 			currentIndex = nextIndex;
 			advance();
@@ -661,9 +702,7 @@ public class ObjectMap<K, V> {
 		}
 	}
 
-	static final Random random = new Random();
-
-	static int nextPowerOfTwo (int value) {
+	static public int nextPowerOfTwo (int value) {
 		if (value == 0) return 1;
 		value--;
 		value |= value >> 1;
