@@ -52,7 +52,8 @@ The JsonBeans code to serialize this object graph:
     Json json = new Json();
     System.out.println(json.toJson(person));
 ```
-```json {"numbers":[{"class":"com.example.PhoneNumber","name":"Home","number":"206-555-1234"},{"class":"com.example.PhoneNumber","name":"Work","number":"425-555-4321"}],"age":31,"name":"Nate"}
+```json 
+{"numbers":[{"class":"com.example.PhoneNumber","name":"Home","number":"206-555-1234"},{"class":"com.example.PhoneNumber","name":"Work","number":"425-555-4321"}],"age":31,"name":"Nate"}
 ```
 
 That is compact, but hardly legible. The `prettyPrint` method can be used:
