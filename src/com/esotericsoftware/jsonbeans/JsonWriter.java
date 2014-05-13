@@ -19,7 +19,6 @@ package com.esotericsoftware.jsonbeans;
 import java.io.IOException;
 import java.io.Writer;
 import java.util.ArrayList;
-import java.util.regex.Pattern;
 
 /** Builder style API for emitting JSON.
  * @author Nathan Sweet */
@@ -122,7 +121,7 @@ public class JsonWriter extends Writer {
 	public JsonWriter pop () throws IOException {
 		if (named) throw new IllegalStateException("Expected an object, array, or value since a name was set.");
 		stack.remove(stack.size() - 1).close();
-		current = stack.isEmpty() ? null : stack.get(stack.size() - 1);
+		current = stack.size() == 0 ? null : stack.get(0);
 		return this;
 	}
 
