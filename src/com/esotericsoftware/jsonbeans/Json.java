@@ -258,8 +258,8 @@ public class Json {
 				if (debug) System.out.println("Writing field: " + field.getName() + " (" + type.getName() + ")");
 				writer.name(field.getName());
 				writeValue(value, field.getType(), metadata.elementType);
-// } catch (ReflectionException ex) {
-// throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+			} catch (IllegalAccessException ex) {
+				throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
 			} catch (JsonException ex) {
 				ex.addTrace(field + " (" + type.getName() + ")");
 				throw ex;
@@ -337,8 +337,8 @@ public class Json {
 			if (debug) System.out.println("Writing field: " + field.getName() + " (" + type.getName() + ")");
 			writer.name(jsonName);
 			writeValue(field.get(object), field.getType(), elementType);
-// } catch (ReflectionException ex) {
-// throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+		} catch (IllegalAccessException ex) {
+			throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
 		} catch (JsonException ex) {
 			ex.addTrace(field + " (" + type.getName() + ")");
 			throw ex;
