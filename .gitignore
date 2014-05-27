@@ -7,3 +7,5 @@ bin/
 target/
 .idea/
 *.iml
+/jsonbeans_src.jar
+/jsonbeans.jar
