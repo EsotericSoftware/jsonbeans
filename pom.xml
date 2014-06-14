@@ -1,0 +1,62 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+		http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>com.esotericsoftware</groupId>
+	<artifactId>jsonbeans</artifactId>
+	<version>0.7-SNAPSHOT</version>
+	<packaging>jar</packaging>
+	<name>JsonBeans</name>
+	<description>Java object graphs, to and from JSON automatically</description>
+	<url>https://github.com/EsotericSoftware/jsonbeans</url>
+
+	<licenses>
+		<license>
+			<name>New BSD License</name>
+			<url>http://www.opensource.org/licenses/bsd-license.php</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
+
+	<scm>
+		<url>https://github.com/EsotericSoftware/jsonbeans</url>
+		<connection>scm:git:git@github.com:EsotericSoftware/jsonbeans.git</connection>
+		<developerConnection>scm:git:git@github.com:EsotericSoftware/jsonbeans.git</developerConnection>
+	</scm>
+
+	<developers>
+		<developer>
+			<id>nathan.sweet</id>
+			<name>Nathan Sweet</name>
+			<email>nathan.sweet@gmail.com</email>
+		</developer>
+	</developers>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+
+	<build>
+		<!-- Set nonstandard source dir -->
+		<sourceDirectory>src</sourceDirectory>
+
+		<plugins>
+			<!-- Disable resources (project has none) -->
+			<plugin>
+				<artifactId>maven-resources-plugin</artifactId>
+				<version>2.5</version>
+				<executions>
+					<execution>
+						<id>default-resources</id>
+						<phase>none</phase>
+					</execution>
+					<execution>
+						<id>default-testResources</id>
+						<phase>none</phase>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+</project>
