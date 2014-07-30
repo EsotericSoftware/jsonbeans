@@ -19,8 +19,6 @@
 
 package com.esotericsoftware.jsonbeans;
 
-import com.esotericsoftware.jsonbeans.JsonValue.ValueType;
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -28,6 +26,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.util.ArrayList;
+
+import com.esotericsoftware.jsonbeans.JsonValue.ValueType;
 
 /** Lightweight JSON parser.<br>
  * <br>
@@ -479,7 +479,7 @@ public class JsonReader {
 			throw new JsonException("Error parsing JSON on line " + lineNumber + " near: " + new String(data, p, pe - p),
 				parseRuntimeEx);
 		} else if (elements.size() != 0) {
-			JsonValue element = elements.get(0);
+			JsonValue element = elements.get(elements.size() - 1);
 			elements.clear();
 			if (element != null && element.isObject())
 				throw new JsonException("Error parsing JSON, unmatched brace.");
@@ -628,7 +628,7 @@ public class JsonReader {
 	protected void pop () {
 		root = elements.remove(elements.size() - 1);
 		if (current.size > 0) lastChild.remove(lastChild.size() - 1);
-		current = elements.size() > 0 ? elements.get(0) : null;
+		current = elements.size() > 0 ? elements.get(elements.size() - 1) : null;
 	}
 
 	protected void string (String name, String value) {

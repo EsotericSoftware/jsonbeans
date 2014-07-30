@@ -16,14 +16,11 @@
 
 package com.esotericsoftware.jsonbeans;
 
-import com.esotericsoftware.jsonbeans.JsonValue.PrettyPrintSettings;
-import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
-import com.esotericsoftware.jsonbeans.ObjectMap.Values;
-
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.StringWriter;
 import java.io.Writer;
@@ -40,6 +37,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+
+import com.esotericsoftware.jsonbeans.JsonValue.PrettyPrintSettings;
+import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
+import com.esotericsoftware.jsonbeans.ObjectMap.Values;
 
 /** Reads/writes Java objects to/from JSON, automatically. See the documentation for usage:
  * https://github.com/EsotericSoftware/jsonbeans
@@ -187,7 +188,7 @@ public class Json {
 	public void toJson (Object object, Class knownType, Class elementType, File file) {
 		Writer writer = null;
 		try {
-			writer = new FileWriter(file);
+			writer = new OutputStreamWriter(new FileOutputStream(file), "UTF-8");
 			toJson(object, knownType, elementType, writer);
 		} catch (Exception ex) {
 			throw new JsonException("Error writing file: " + file, ex);
