@@ -32,6 +32,7 @@ import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
 import java.security.AccessControlException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -39,7 +40,7 @@ import java.util.Map;
 
 import com.esotericsoftware.jsonbeans.JsonValue.PrettyPrintSettings;
 import com.esotericsoftware.jsonbeans.ObjectMap.Entry;
-import com.esotericsoftware.jsonbeans.ObjectMap.Values;
+import com.esotericsoftware.jsonbeans.OrderedMap.OrderedMapValues;
 
 /** Reads/writes Java objects to/from JSON, automatically. See the wiki for usage:
  * https://github.com/libgdx/libgdx/wiki/Reading-%26-writing-JSON
@@ -55,11 +56,12 @@ public class Json {
 	private boolean ignoreUnknownFields;
 	private boolean enumNames = true;
 	private JsonSerializer defaultSerializer;
-	private final ObjectMap<Class, ObjectMap<String, FieldMetadata>> typeToFields = new ObjectMap();
+	private final ObjectMap<Class, OrderedMap<String, FieldMetadata>> typeToFields = new ObjectMap();
 	private final ObjectMap<String, Class> tagToClass = new ObjectMap();
 	private final ObjectMap<Class, String> classToTag = new ObjectMap();
 	private final ObjectMap<Class, JsonSerializer> classToSerializer = new ObjectMap();
 	private final ObjectMap<Class, Object[]> classToDefaultValues = new ObjectMap();
+	private final Object[] equals1 = {null}, equals2 = {null};
 
 	public Json () {
 		outputType = OutputType.minimal;
@@ -96,20 +98,14 @@ public class Json {
 		classToTag.put(type, tag);
 	}
 
-	public Class getClass (String tagOrClassName) {
-		Class type = tagToClass.get(tagOrClassName);
-		if (type != null) return type;
-		try {
-			return Class.forName(tagOrClassName);
-		} catch (Exception ex) {
-			throw new JsonException(ex);
-		}
+	/** Returns the class for the specified tag, or null. */
+	public Class getClass (String tag) {
+		return tagToClass.get(tag);
 	}
 
+	/** Returns the tag for the specified class, or null. */
 	public String getTag (Class type) {
-		String tag = classToTag.get(type);
-		if (tag != null) return tag;
-		return type.getName();
+		return classToTag.get(type);
 	}
 
 	/** Sets the name of the JSON field to store the Java class name or class tag when required to avoid ambiguity during
@@ -143,14 +139,16 @@ public class Json {
 	/** Sets the type of elements in a collection. When the element type is known, the class for each element in the collection does
 	 * not need to be written unless different from the element type. */
 	public void setElementType (Class type, String fieldName, Class elementType) {
-		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
-		if (fields == null) fields = cacheFields(type);
+		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
 		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		metadata.elementType = elementType;
 	}
 
-	private ObjectMap<String, FieldMetadata> cacheFields (Class type) {
+	private OrderedMap<String, FieldMetadata> getFields (Class type) {
+		OrderedMap<String, FieldMetadata> fields = typeToFields.get(type);
+		if (fields != null) return fields;
+
 		ArrayList<Field> allFields = new ArrayList();
 		Class nextClass = type;
 		while (nextClass != Object.class) {
@@ -158,7 +156,7 @@ public class Json {
 			nextClass = nextClass.getSuperclass();
 		}
 
-		ObjectMap<String, FieldMetadata> nameToField = new ObjectMap();
+		OrderedMap<String, FieldMetadata> nameToField = new OrderedMap();
 		for (int i = 0, n = allFields.size(); i < n; i++) {
 			Field field = allFields.get(i);
 
@@ -267,17 +265,23 @@ public class Json {
 
 		Object[] defaultValues = getDefaultValues(type);
 
-		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
-		if (fields == null) fields = cacheFields(type);
+		OrderedMap<String, FieldMetadata> fields = getFields(type);
 		int i = 0;
-		for (FieldMetadata metadata : new Values<FieldMetadata>(fields)) {
+		for (FieldMetadata metadata : new OrderedMapValues<FieldMetadata>(fields)) {
 			Field field = metadata.field;
 			try {
 				Object value = field.get(object);
 				if (defaultValues != null) {
 					Object defaultValue = defaultValues[i++];
 					if (value == null && defaultValue == null) continue;
-					if (value != null && defaultValue != null && value.equals(defaultValue)) continue;
+					if (value != null && defaultValue != null) {
+						if (value.equals(defaultValue)) continue;
+						if (value.getClass().isArray() && defaultValue.getClass().isArray()) {
+							equals1[0] = value;
+							equals2[0] = defaultValue;
+							if (Arrays.deepEquals(equals1, equals2)) continue;
+						}
+					}
 				}
 
 				if (debug) System.out.println("Writing field: " + field.getName() + " (" + type.getName() + ")");
@@ -307,9 +311,7 @@ public class Json {
 			return null;
 		}
 
-		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
-		if (fields == null) fields = cacheFields(type);
-
+		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		Object[] values = new Object[fields.size];
 		classToDefaultValues.put(type, values);
 
@@ -352,8 +354,7 @@ public class Json {
 	 * @param elementType May be null if the type is unknown. */
 	public void writeField (Object object, String fieldName, String jsonName, Class elementType) {
 		Class type = object.getClass();
-		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
-		if (fields == null) fields = cacheFields(type);
+		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
 		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		Field field = metadata.field;
@@ -477,6 +478,17 @@ public class Json {
 			}
 
 			// JSON array special cases.
+			if (value instanceof ArrayList) {
+				if (knownType != null && actualType != knownType && actualType != ArrayList.class)
+					throw new JsonException("Serialization of an Array other than the known type is not supported.\n" + "Known type: "
+						+ knownType + "\nActual type: " + actualType);
+				writeArrayStart();
+				ArrayList array = (ArrayList)value;
+				for (int i = 0, n = array.size(); i < n; i++)
+					writeValue(array.get(i), elementType, null);
+				writeArrayEnd();
+				return;
+			}
 			if (value instanceof Collection) {
 				if (typeName != null && actualType != ArrayList.class && (knownType == null || knownType != actualType)) {
 					writeObjectStart(actualType, knownType);
@@ -622,7 +634,7 @@ public class Json {
 
 	public void writeType (Class type) {
 		if (typeName == null) return;
-		String className = classToTag.get(type);
+		String className = getTag(type);
 		if (className == null) className = type.getName();
 		try {
 			writer.set(typeName, className);
@@ -719,32 +731,37 @@ public class Json {
 	/** @param elementType May be null if the type is unknown. */
 	public void readField (Object object, String fieldName, String jsonName, Class elementType, JsonValue jsonMap) {
 		Class type = object.getClass();
-		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
-		if (fields == null) fields = cacheFields(type);
+		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
 		if (metadata == null) throw new JsonException("Field not found: " + fieldName + " (" + type.getName() + ")");
 		Field field = metadata.field;
+		if (elementType == null) elementType = metadata.elementType;
+		readField(object, field, jsonName, elementType, jsonMap);
+	}
+
+	/** @param object May be null if the field is static.
+	 * @param elementType May be null if the type is unknown. */
+	public void readField (Object object, Field field, String jsonName, Class elementType, JsonValue jsonMap) {
 		JsonValue jsonValue = jsonMap.get(jsonName);
 		if (jsonValue == null) return;
-		if (elementType == null) elementType = metadata.elementType;
 		try {
 			field.set(object, readValue(field.getType(), elementType, jsonValue));
 		} catch (IllegalAccessException ex) {
-			throw new JsonException("Error accessing field: " + field.getName() + " (" + type.getName() + ")", ex);
+			throw new JsonException("Error accessing field: " + field.getName() + " (" + field.getDeclaringClass().getName() + ")",
+				ex);
 		} catch (JsonException ex) {
-			ex.addTrace(field.getName() + " (" + type.getName() + ")");
+			ex.addTrace(field.getName() + " (" + field.getDeclaringClass().getName() + ")");
 			throw ex;
 		} catch (RuntimeException runtimeEx) {
 			JsonException ex = new JsonException(runtimeEx);
-			ex.addTrace(field.getName() + " (" + type.getName() + ")");
+			ex.addTrace(field.getName() + " (" + field.getDeclaringClass().getName() + ")");
 			throw ex;
 		}
 	}
 
 	public void readFields (Object object, JsonValue jsonMap) {
 		Class type = object.getClass();
-		ObjectMap<String, FieldMetadata> fields = typeToFields.get(type);
-		if (fields == null) fields = cacheFields(type);
+		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		for (JsonValue child = jsonMap.child; child != null; child = child.next) {
 			FieldMetadata metadata = fields.get(child.name());
 			if (metadata == null) {
@@ -823,7 +840,7 @@ public class Json {
 			String className = typeName == null ? null : jsonData.getString(typeName, null);
 			if (className != null) {
 				jsonData.remove(typeName);
-				type = tagToClass.get(className);
+				type = getClass(className);
 				if (type == null) {
 					try {
 						type = (Class<T>)Class.forName(className);
@@ -884,7 +901,7 @@ public class Json {
 
 		if (jsonData.isArray()) {
 			// JSON array special cases.
-			if (type == null || type == Object.class) type = (Class<T>)Array.class;
+			if (type == null || type == Object.class) type = (Class<T>)ArrayList.class;
 			if (Collection.class.isAssignableFrom(type)) {
 				Collection result = type.isInterface() ? new ArrayList() : (Collection)newInstance(type);
 				for (JsonValue child = jsonData.child; child != null; child = child.next)
@@ -978,7 +995,6 @@ public class Json {
 					if (type.getEnumConstants() == null) type = type.getSuperclass();
 					return type.getEnumConstants()[0];
 				}
-
 				if (type.isArray())
 					throw new JsonException("Encountered JSON object when expected array of type: " + type.getName(), ex);
 				else if (type.isMemberClass() && !Modifier.isStatic(type.getModifiers()))

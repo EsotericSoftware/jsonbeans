@@ -21,6 +21,7 @@ import java.io.Writer;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
+import java.util.regex.Pattern;
 
 /** Builder style API for emitting JSON.
  * @author Nathan Sweet */

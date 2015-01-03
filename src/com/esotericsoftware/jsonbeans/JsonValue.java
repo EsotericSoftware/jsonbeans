@@ -877,7 +877,7 @@ public class JsonValue implements Iterable<JsonValue> {
 		if (isValue())
 			return name == null ? asString() : name + ": " + asString();
 		else
-			return prettyPrint(OutputType.minimal, 0);
+			return (name == null ? "" : name + ": ") + prettyPrint(OutputType.minimal, 0);
 	}
 
 	public String prettyPrint (OutputType outputType, int singleLineColumns) {
@@ -894,8 +894,9 @@ public class JsonValue implements Iterable<JsonValue> {
 	}
 
 	private void prettyPrint (JsonValue object, StringBuilder buffer, int indent, PrettyPrintSettings settings) {
+		OutputType outputType = settings.outputType;
 		if (object.isObject()) {
-			if (object.child() == null) {
+			if (object.child == null) {
 				buffer.append("{}");
 			} else {
 				boolean newLines = !isFlat(object);
@@ -904,12 +905,12 @@ public class JsonValue implements Iterable<JsonValue> {
 				while (true) {
 					buffer.append(newLines ? "{\n" : "{ ");
 					int i = 0;
-					for (JsonValue child = object.child(); child != null; child = child.next()) {
+					for (JsonValue child = object.child; child != null; child = child.next) {
 						if (newLines) indent(indent, buffer);
-						buffer.append(settings.outputType.quoteName(child.name()));
+						buffer.append(outputType.quoteName(child.name));
 						buffer.append(": ");
 						prettyPrint(child, buffer, indent + 1, settings);
-						if (child.next() != null) buffer.append(",");
+						if ((!newLines || outputType != OutputType.minimal) && child.next != null) buffer.append(',');
 						buffer.append(newLines ? '\n' : ' ');
 						if (!newLines && buffer.length() - start > settings.singleLineColumns) {
 							buffer.setLength(start);
@@ -923,7 +924,7 @@ public class JsonValue implements Iterable<JsonValue> {
 				buffer.append('}');
 			}
 		} else if (object.isArray()) {
-			if (object.child() == null) {
+			if (object.child == null) {
 				buffer.append("[]");
 			} else {
 				boolean newLines = !isFlat(object);
@@ -932,10 +933,10 @@ public class JsonValue implements Iterable<JsonValue> {
 				outer:
 				while (true) {
 					buffer.append(newLines ? "[\n" : "[ ");
-					for (JsonValue child = object.child(); child != null; child = child.next()) {
+					for (JsonValue child = object.child; child != null; child = child.next) {
 						if (newLines) indent(indent, buffer);
 						prettyPrint(child, buffer, indent + 1, settings);
-						if (child.next() != null) buffer.append(",");
+						if ((!newLines || outputType != OutputType.minimal) && child.next != null) buffer.append(',');
 						buffer.append(newLines ? '\n' : ' ');
 						if (wrap && !newLines && buffer.length() - start > settings.singleLineColumns) {
 							buffer.setLength(start);
@@ -949,7 +950,7 @@ public class JsonValue implements Iterable<JsonValue> {
 				buffer.append(']');
 			}
 		} else if (object.isString()) {
-			buffer.append(settings.outputType.quoteValue(object.asString()));
+			buffer.append(outputType.quoteValue(object.asString()));
 		} else if (object.isDouble()) {
 			double doubleValue = object.asDouble();
 			long longValue = object.asLong();
@@ -965,13 +966,13 @@ public class JsonValue implements Iterable<JsonValue> {
 	}
 
 	static private boolean isFlat (JsonValue object) {
-		for (JsonValue child = object.child(); child != null; child = child.next())
+		for (JsonValue child = object.child; child != null; child = child.next)
 			if (child.isObject() || child.isArray()) return false;
 		return true;
 	}
 
 	static private boolean isNumeric (JsonValue object) {
-		for (JsonValue child = object.child(); child != null; child = child.next())
+		for (JsonValue child = object.child; child != null; child = child.next)
 			if (!child.isNumber()) return false;
 		return true;
 	}
