@@ -136,8 +136,8 @@ public class Json {
 		this.usePrototypes = usePrototypes;
 	}
 
-	/** Sets the type of elements in a collection. When the element type is known, the class for each element in the collection does
-	 * not need to be written unless different from the element type. */
+	/** Sets the type of elements in a collection. When the element type is known, the class for each element in the collection
+	 * does not need to be written unless different from the element type. */
 	public void setElementType (Class type, String fieldName, Class elementType) {
 		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		FieldMetadata metadata = fields.get(fieldName);
@@ -434,8 +434,8 @@ public class Json {
 		writeValue(value, knownType, null);
 	}
 
-	/** Writes the value, writing the class of the object if it differs from the specified known type. The specified element type is
-	 * used as the default type for collections.
+	/** Writes the value, writing the class of the object if it differs from the specified known type. The specified element type
+	 * is used as the default type for collections.
 	 * @param value May be null.
 	 * @param knownType May be null if the type is unknown.
 	 * @param elementType May be null if the type is unknown. */
@@ -897,6 +897,13 @@ public class Json {
 		if (type != null) {
 			JsonSerializer serializer = classToSerializer.get(type);
 			if (serializer != null) return (T)serializer.read(this, jsonData, type);
+
+			if (JsonSerializable.class.isAssignableFrom(type)) {
+				// A Serializable may be read as an array, string, etc, even though it will be written as an object.
+				Object object = newInstance(type);
+				((JsonSerializable)object).read(this, jsonData);
+				return (T)object;
+			}
 		}
 
 		if (jsonData.isArray()) {
@@ -1042,8 +1049,12 @@ public class Json {
 			Type genericType = field.getGenericType();
 			if (genericType instanceof ParameterizedType) {
 				Type[] actualTypes = ((ParameterizedType)genericType).getActualTypeArguments();
-				if (actualTypes.length == 1) {
-					Type actualType = actualTypes[0];
+				Type actualType = null;
+				if (actualTypes.length == 1)
+					actualType = actualTypes[0];
+				else if (actualTypes.length == 2 && Map.class.isAssignableFrom(field.getType())) //
+					actualType = actualTypes[1];
+				if (actualType != null) {
 					if (actualType instanceof Class)
 						elementType = (Class)actualType;
 					else if (actualType instanceof ParameterizedType)
