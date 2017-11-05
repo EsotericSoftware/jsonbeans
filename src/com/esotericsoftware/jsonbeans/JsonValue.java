@@ -15,6 +15,7 @@ import java.util.NoSuchElementException;
  * for (JsonValue entry = map.child; entry != null; entry = entry.next)
  * 	System.out.println(entry.name + " = " + entry.asString());
  * </pre>
+ * 
  * @author Nathan Sweet */
 public class JsonValue implements Iterable<JsonValue> {
 	private ValueType type;
@@ -65,7 +66,7 @@ public class JsonValue implements Iterable<JsonValue> {
 	 * @return May be null. */
 	public JsonValue get (String name) {
 		JsonValue current = child;
-		while (current != null && !current.name.equalsIgnoreCase(name))
+		while (current != null && (current.name == null || !current.name.equalsIgnoreCase(name)))
 			current = current.next;
 		return current;
 	}
@@ -92,7 +93,7 @@ public class JsonValue implements Iterable<JsonValue> {
 	 * @throws IllegalArgumentException if the child was not found. */
 	public JsonValue require (String name) {
 		JsonValue current = child;
-		while (current != null && !current.name.equalsIgnoreCase(name))
+		while (current != null && (current.name == null || !current.name.equalsIgnoreCase(name)))
 			current = current.next;
 		if (current == null) throw new IllegalArgumentException("Child not found with name: " + name);
 		return current;

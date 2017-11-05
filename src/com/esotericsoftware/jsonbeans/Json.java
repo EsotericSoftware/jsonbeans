@@ -763,7 +763,7 @@ public class Json {
 		Class type = object.getClass();
 		ObjectMap<String, FieldMetadata> fields = getFields(type);
 		for (JsonValue child = jsonMap.child; child != null; child = child.next) {
-			FieldMetadata metadata = fields.get(child.name());
+			FieldMetadata metadata = fields.get(child.name().replace(" ", "_"));
 			if (metadata == null) {
 				if (ignoreUnknownFields) {
 					if (debug) System.out.println("Ignoring unknown field: " + child.name() + " (" + type.getName() + ")");
@@ -864,6 +864,8 @@ public class Json {
 			if (typeName != null && Collection.class.isAssignableFrom(type)) {
 				// JSON object wrapper to specify type.
 				jsonData = jsonData.get("items");
+				if (jsonData == null)
+					throw new JsonException("Unable to convert object to collection: " + jsonData + " (" + type.getName() + ")");
 			} else {
 				JsonSerializer serializer = classToSerializer.get(type);
 				if (serializer != null) return (T)serializer.read(this, jsonData, type);
