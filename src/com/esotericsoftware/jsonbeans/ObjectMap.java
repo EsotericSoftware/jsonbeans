@@ -157,9 +157,9 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>> {
 		return null;
 	}
 
-	public void putAll (ObjectMap<K, V> map) {
+	public void putAll (ObjectMap<? extends K, ? extends V> map) {
 		ensureCapacity(map.size);
-		for (Entry<K, V> entry : map)
+		for (Entry<? extends K, ? extends V> entry : map)
 			put(entry.key, entry.value);
 	}
 
@@ -375,9 +375,12 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>> {
 		if (index < lastIndex) {
 			keyTable[index] = keyTable[lastIndex];
 			valueTable[index] = valueTable[lastIndex];
+			keyTable[lastIndex] = null;
 			valueTable[lastIndex] = null;
-		} else
+		} else {
+			keyTable[index] = null;
 			valueTable[index] = null;
+		}
 	}
 
 	/** Reduces the size of the backing arrays to be the specified capacity or less. If the capacity is already less, nothing is
@@ -475,6 +478,7 @@ public class ObjectMap<K, V> implements Iterable<ObjectMap.Entry<K, V>> {
 	/** Increases the size of the backing array to accommodate the specified number of additional items. Useful before adding many
 	 * items to avoid multiple backing array resizes. */
 	public void ensureCapacity (int additionalCapacity) {
+		if (additionalCapacity < 0) throw new IllegalArgumentException("additionalCapacity must be >= 0: " + additionalCapacity);
 		int sizeNeeded = size + additionalCapacity;
 		if (sizeNeeded >= threshold) resize(nextPowerOfTwo((int)(sizeNeeded / loadFactor)));
 	}
