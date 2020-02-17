@@ -2,18 +2,31 @@
 package com.esotericsoftware.jsonbeans;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.NoSuchElementException;
 
-/** An {@link ObjectMap} that also stores keys in an {@link ArrayList} using the insertion order. There is some additional overhead
- * for put and remove. Iteration over the {@link #entries()}, {@link #keys()}, and {@link #values()} is ordered and faster than an
- * unordered map. Keys can also be accessed and the order changed using {@link #orderedKeys()}.
- * @author Nathan Sweet */
+/** An {@link ObjectMap} that also stores keys in an {@link ArrayList} using the insertion order. Null keys are not allowed. No
+ * allocation is done except when growing the table size.
+ * <p>
+ * Iteration over the {@link #entries()}, {@link #keys()}, and {@link #values()} is ordered and faster than an unordered map. Keys
+ * can also be accessed and the order changed using {@link #orderedKeys()}. There is some additional overhead for put and remove.
+ * <p>
+ * This class performs fast contains (typically O(1), worst case O(n) but that is rare in practice). Remove is somewhat slower due
+ * to {@link #orderedKeys()}. Add may be slightly slower, depending on hash collisions. Hashcodes are rehashed to reduce
+ * collisions and the need to resize. Load factors greater than 0.91 greatly increase the chances to resize to the next higher POT
+ * size.
+ * <p>
+ * Unordered sets and maps are not designed to provide especially fast iteration. Iteration is faster with OrderedSet and
+ * OrderedMap.
+ * <p>
+ * This implementation uses linear probing with the backward shift algorithm for removal. Hashcodes are rehashed using Fibonacci
+ * hashing, instead of the more common power-of-two mask, to better distribute poor hashCodes (see <a href=
+ * "https://probablydance.com/2018/06/16/fibonacci-hashing-the-optimization-that-the-world-forgot-or-a-better-alternative-to-integer-modulo/">Malte
+ * Skarupke's blog post</a>). Linear probing continues to work even when all hashCodes collide, just more slowly.
+ * @author Nathan Sweet
+ * @author Tommy Ettinger */
 public class OrderedMap<K, V> extends ObjectMap<K, V> {
 	final ArrayList<K> keys;
-
-	private Entries entries1, entries2;
-	private Values values1, values2;
-	private Keys keys1, keys2;
 
 	public OrderedMap () {
 		keys = new ArrayList();
@@ -21,27 +34,79 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 
 	public OrderedMap (int initialCapacity) {
 		super(initialCapacity);
-		keys = new ArrayList(capacity);
+		keys = new ArrayList(initialCapacity);
 	}
 
 	public OrderedMap (int initialCapacity, float loadFactor) {
 		super(initialCapacity, loadFactor);
-		keys = new ArrayList(capacity);
+		keys = new ArrayList(initialCapacity);
 	}
 
-	public OrderedMap (ObjectMap<? extends K, ? extends V> map) {
+	public OrderedMap (OrderedMap<? extends K, ? extends V> map) {
 		super(map);
-		keys = new ArrayList(capacity);
+		keys = new ArrayList(map.keys);
 	}
 
 	public V put (K key, V value) {
-		if (!containsKey(key)) keys.add(key);
-		return super.put(key, value);
+		int i = locateKey(key);
+		if (i >= 0) { // Existing key was found.
+			V oldValue = valueTable[i];
+			valueTable[i] = value;
+			return oldValue;
+		}
+		i = -(i + 1); // Empty space was found.
+		keyTable[i] = key;
+		valueTable[i] = value;
+		keys.add(key);
+		if (++size >= threshold) resize(keyTable.length << 1);
+		return null;
+	}
+
+	public <T extends K> void putAll (OrderedMap<T, ? extends V> map) {
+		ensureCapacity(map.size);
+		ArrayList<T> keys = map.keys;
+		for (int i = 0, n = map.keys.size(); i < n; i++) {
+			K key = keys.get(i);
+			put(key, map.get((T)key));
+		}
 	}
 
 	public V remove (K key) {
 		keys.remove(key);
 		return super.remove(key);
+	}
+
+	public V removeIndex (int index) {
+		return super.remove(keys.remove(index));
+	}
+
+	/** Changes the key {@code before} to {@code after} without changing its position in the order or its value. Returns true if
+	 * {@code after} has been added to the OrderedMap and {@code before} has been removed; returns false if {@code after} is
+	 * already present or {@code before} is not present. If you are iterating over an OrderedMap and have an index, you should
+	 * prefer {@link #alterIndex(int, Object)}, which doesn't need to search for an index like this does and so can be faster.
+	 * @param before a key that must be present for this to succeed
+	 * @param after a key that must not be in this map for this to succeed
+	 * @return true if {@code before} was removed and {@code after} was added, false otherwise */
+	public boolean alter (K before, K after) {
+		if (containsKey(after)) return false;
+		int index = keys.indexOf(before);
+		if (index == -1) return false;
+		super.put(after, super.remove(before));
+		keys.set(index, after);
+		return true;
+	}
+
+	/** Changes the key at the given {@code index} in the order to {@code after}, without changing the ordering of other entries or
+	 * any values. If {@code after} is already present, this returns false; it will also return false if {@code index} is invalid
+	 * for the size of this map. Otherwise, it returns true. Unlike {@link #alter(Object, Object)}, this operates in constant time.
+	 * @param index the index in the order of the key to change; must be non-negative and less than {@link #size}
+	 * @param after the key that will replace the contents at {@code index}; this key must not be present for this to succeed
+	 * @return true if {@code after} successfully replaced the key at {@code index}, false otherwise */
+	public boolean alterIndex (int index, K after) {
+		if (index < 0 || index >= size || containsKey(after)) return false;
+		super.put(after, super.remove(keys.get(index)));
+		keys.set(index, after);
+		return true;
 	}
 
 	public void clear (int maximumCapacity) {
@@ -62,66 +127,24 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 		return entries();
 	}
 
-	/** Returns an iterator for the entries in the map. Remove is supported. Note that the same iterator instance is returned each
-	 * time this method is called. Use the {@link OrderedMapEntries} constructor for nested or multithreaded iteration. */
+	/** Returns an iterator for the entries in the map. Remove is supported. */
 	public Entries<K, V> entries () {
-		if (entries1 == null) {
-			entries1 = new OrderedMapEntries(this);
-			entries2 = new OrderedMapEntries(this);
-		}
-		if (!entries1.valid) {
-			entries1.reset();
-			entries1.valid = true;
-			entries2.valid = false;
-			return entries1;
-		}
-		entries2.reset();
-		entries2.valid = true;
-		entries1.valid = false;
-		return entries2;
+		return new OrderedMapEntries(this);
 	}
 
-	/** Returns an iterator for the values in the map. Remove is supported. Note that the same iterator instance is returned each
-	 * time this method is called. Use the {@link OrderedMapValues} constructor for nested or multithreaded iteration. */
+	/** Returns an iterator for the values in the map. Remove is supported. */
 	public Values<V> values () {
-		if (values1 == null) {
-			values1 = new OrderedMapValues(this);
-			values2 = new OrderedMapValues(this);
-		}
-		if (!values1.valid) {
-			values1.reset();
-			values1.valid = true;
-			values2.valid = false;
-			return values1;
-		}
-		values2.reset();
-		values2.valid = true;
-		values1.valid = false;
-		return values2;
+		return new OrderedMapValues(this);
 	}
 
-	/** Returns an iterator for the keys in the map. Remove is supported. Note that the same iterator instance is returned each time
-	 * this method is called. Use the {@link OrderedMapKeys} constructor for nested or multithreaded iteration. */
+	/** Returns an iterator for the keys in the map. Remove is supported. */
 	public Keys<K> keys () {
-		if (keys1 == null) {
-			keys1 = new OrderedMapKeys(this);
-			keys2 = new OrderedMapKeys(this);
-		}
-		if (!keys1.valid) {
-			keys1.reset();
-			keys1.valid = true;
-			keys2.valid = false;
-			return keys1;
-		}
-		keys2.reset();
-		keys2.valid = true;
-		keys1.valid = false;
-		return keys2;
+		return new OrderedMapKeys(this);
 	}
 
 	public String toString () {
 		if (size == 0) return "{}";
-		StringBuilder buffer = new StringBuilder(32);
+		java.lang.StringBuilder buffer = new java.lang.StringBuilder(32);
 		buffer.append('{');
 		ArrayList<K> keys = this.keys;
 		for (int i = 0, n = keys.size(); i < n; i++) {
@@ -144,13 +167,14 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 		}
 
 		public void reset () {
+			currentIndex = -1;
 			nextIndex = 0;
 			hasNext = map.size > 0;
 		}
 
 		public Entry next () {
 			if (!hasNext) throw new NoSuchElementException();
-			if (!valid) throw new RuntimeException("#iterator() cannot be used nested.");
+			currentIndex = nextIndex;
 			entry.key = keys.get(nextIndex);
 			entry.value = map.get(entry.key);
 			nextIndex++;
@@ -161,6 +185,8 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 		public void remove () {
 			if (currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
 			map.remove(entry.key);
+			nextIndex--;
+			currentIndex = -1;
 		}
 	}
 
@@ -173,14 +199,15 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 		}
 
 		public void reset () {
+			currentIndex = -1;
 			nextIndex = 0;
 			hasNext = map.size > 0;
 		}
 
 		public K next () {
 			if (!hasNext) throw new NoSuchElementException();
-			if (!valid) throw new RuntimeException("#iterator() cannot be used nested.");
 			K key = keys.get(nextIndex);
+			currentIndex = nextIndex;
 			nextIndex++;
 			hasNext = nextIndex < map.size;
 			return key;
@@ -188,7 +215,9 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 
 		public void remove () {
 			if (currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
-			map.remove(keys.get(nextIndex - 1));
+			((OrderedMap)map).removeIndex(currentIndex);
+			nextIndex = currentIndex;
+			currentIndex = -1;
 		}
 	}
 
@@ -201,14 +230,15 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 		}
 
 		public void reset () {
+			currentIndex = -1;
 			nextIndex = 0;
 			hasNext = map.size > 0;
 		}
 
 		public V next () {
 			if (!hasNext) throw new NoSuchElementException();
-			if (!valid) throw new RuntimeException("#iterator() cannot be used nested.");
-			V value = (V)map.get(keys.get(nextIndex));
+			V value = map.get(keys.get(nextIndex));
+			currentIndex = nextIndex;
 			nextIndex++;
 			hasNext = nextIndex < map.size;
 			return value;
@@ -216,7 +246,23 @@ public class OrderedMap<K, V> extends ObjectMap<K, V> {
 
 		public void remove () {
 			if (currentIndex < 0) throw new IllegalStateException("next must be called before remove.");
-			map.remove(keys.get(nextIndex - 1));
+			((OrderedMap)map).removeIndex(currentIndex);
+			nextIndex = currentIndex;
+			currentIndex = -1;
+		}
+
+		public <T extends List<V>> T toList (T array) {
+			int n = keys.size();
+			for (int i = nextIndex; i < n; i++)
+				array.add(map.get(keys.get(i)));
+			currentIndex = n - 1;
+			nextIndex = n;
+			hasNext = false;
+			return array;
+		}
+
+		public ArrayList<V> toList () {
+			return toList(new ArrayList(keys.size() - nextIndex));
 		}
 	}
 }

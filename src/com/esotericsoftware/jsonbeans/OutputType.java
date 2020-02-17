@@ -17,14 +17,15 @@ public enum OutputType {
 	 * or <code>null</code>.
 	 * <li>Newlines are treated as commas, making commas optional in many cases.
 	 * <li>C style comments may be used: <code>//...</code> or <code>/*...*<b></b>/</code>
-	 * </ul> */
+	 * </ul>
+	 */
 	minimal;
 
 	static private Pattern javascriptPattern = Pattern.compile("^[a-zA-Z_$][a-zA-Z_$0-9]*$");
 	static private Pattern minimalNamePattern = Pattern.compile("^[^\":,}/ ][^:]*$");
 	static private Pattern minimalValuePattern = Pattern.compile("^[^\":,{\\[\\]/ ][^}\\],]*$");
 
-	public String quoteValue (Object value) {
+	public String quoteValue (@Null Object value) {
 		if (value == null || value instanceof Number || value instanceof Boolean) return String.valueOf(value);
 		String string = String.valueOf(value).replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t");
 		if (this == OutputType.minimal && !string.equals("true") && !string.equals("false") && !string.equals("null")
