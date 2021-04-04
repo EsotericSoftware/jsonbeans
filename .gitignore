@@ -3,7 +3,15 @@
 .*.swp
 .DS_STORE
 
+.project/
+.settings/
+
 bin/
+build/
 target/
 .idea/
 *.iml
+
+.gradle/
+gradle/
+gradlew*
