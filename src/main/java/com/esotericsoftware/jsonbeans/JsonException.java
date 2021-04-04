@@ -2,7 +2,7 @@
 package com.esotericsoftware.jsonbeans;
 
 /** Indicates an error during serialization due to misconfiguration or during deserialization due to invalid input data.
- * @author Nathan Sweet <misc@n4te.com> */
+ * @author Nathan Sweet - misc@n4te.com */
 public class JsonException extends RuntimeException {
 	private StringBuffer trace;
 
