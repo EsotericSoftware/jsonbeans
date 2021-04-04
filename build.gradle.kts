@@ -1,7 +1,7 @@
 plugins { id("io.vacco.oss") version "1.0.1" }
 
 group = "io.vacco.jsonbeans"
-version = "0.9.0"
+version = "0.9.1"
 
 configure<io.vacco.oss.CbPluginProfileExtension> {
   sharedLibrary(true, true)
