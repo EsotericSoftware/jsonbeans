@@ -1,10 +1,10 @@
-plugins { id("io.vacco.oss") version "1.0.1" }
+plugins { id("io.vacco.oss.gitflow") version "0.9.3" }
 
 group = "io.vacco.jsonbeans"
-version = "0.9.1"
+version = "1.0.0"
 
-configure<io.vacco.oss.CbPluginProfileExtension> {
-  sharedLibrary(true, true)
+configure<io.vacco.oss.gitflow.GsPluginProfileExtension> {
+  sharedLibrary(true, false)
   addClasspathHell()
 }
 

@@ -1,22 +1,14 @@
 name: Gradle Build
 on: {push: {tags: null}}
-
 jobs:
   build:
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v2
-      - uses: actions/checkout@v2
+      - uses: vaccovecrana/gitflow-oss-java-slim@0.9.3
         with:
-          repository: vaccovecrana/common-build
-          token: ${{secrets.VACCO_CI_TOKEN}}
-          path: .github/actions
-          ref: 1.0.0
-      - uses: ./.github/actions/cb-action
-        with:
-          ghEvent: ${{tojson(github.event)}}
-          ghUser: ${{secrets.VACCO_CI_USER}}
-          ghToken: ${{secrets.VACCO_CI_TOKEN}}
-          sonatypeUser: ${{secrets.SONATYPE_USER}}
-          sonatypePassword: ${{secrets.SONATYPE_PASSWORD}}
-          mavenSigningPrv: ${{secrets.MAVEN_SIGNING_PRV}}
+          orgConfig: https://vacco-oss.s3.us-east-2.amazonaws.com/vacco-oss.json
+        env:
+          SONATYPE_USER: ${{secrets.SONATYPE_USER}}
+          SONATYPE_PASSWORD: ${{secrets.SONATYPE_PASSWORD}}
+          MAVEN_SIGNING_PRV: ${{secrets.MAVEN_SIGNING_PRV}}
