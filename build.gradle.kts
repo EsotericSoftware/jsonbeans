@@ -4,7 +4,7 @@ group = "io.vacco.jsonbeans"
 version = "1.0.0"
 
 configure<io.vacco.oss.gitflow.GsPluginProfileExtension> {
-  sharedLibrary(true, true)
+  sharedLibrary(true, false)
 }
 
 configure<JavaPluginExtension> {
