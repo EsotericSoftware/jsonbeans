@@ -31,7 +31,6 @@ import java.lang.reflect.GenericArrayType;
 import java.lang.reflect.Modifier;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.Type;
-import java.security.AccessControlException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -206,7 +205,7 @@ public class Json {
 			if (!field.isAccessible()) {
 				try {
 					field.setAccessible(true);
-				} catch (AccessControlException ex) {
+				} catch (RuntimeException ex) {
 					continue;
 				}
 			}
